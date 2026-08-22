@@ -1,59 +1,61 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
-
-import { useColorScheme } from '@/components/useColorScheme';
-
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
-
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
-};
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+//_layout.tsx
+import { useEffect, useState } from 'react';
+import { View, ActivityIndicator } from 'react-native';
+import { Stack, useRouter, useSegments } from 'expo-router';
+import { Session } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...FontAwesome.font,
-  });
-
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+  const [session, setSession] = useState<Session | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  
+  const segments = useSegments(); // Nos dice en qué carpeta estamos ej: ['(auth)']
+  const router = useRouter();     // Nos permite navegar
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    // 1. Revisar si hay una sesión guardada al abrir la app
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setIsInitialized(true);
+    });
+
+    // 2. Escuchar cambios (cuando el usuario inicia sesión o cierra sesión)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    // Comprobamos si estamos intentando entrar a la carpeta (auth)
+    const inAuthGroup = segments[0] === '(auth)';
+
+    if (!session && !inAuthGroup) {
+      // No hay usuario y está intentando entrar a la app -> ¡Al Login!
+      router.replace('/(auth)/login');
+    } else if (session && inAuthGroup) {
+      // Hay usuario y está en la pantalla de Login -> ¡A las pestañas!
+      router.replace('/(tabs)');
     }
-  }, [loaded]);
+  }, [session, isInitialized, segments]);
 
-  if (!loaded) {
-    return null;
+  // Pantalla de carga mientras verificamos la sesión
+  if (!isInitialized) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#28a745" />
+      </View>
+    );
   }
 
-  return <RootLayoutNav />;
-}
-
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-
+  // Si todo está bien, cargamos los grupos de navegación
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(tabs)" />
+    </Stack>
   );
 }
