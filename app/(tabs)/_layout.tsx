@@ -1,4 +1,4 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { MaterialIcons } from "@expo/vector-icons";
 import { Link, Tabs } from "expo-router";
 import React from "react";
 import { Pressable } from "react-native";
@@ -7,12 +7,12 @@ import { useClientOnlyValue } from "@/components/useClientOnlyValue";
 import { useColorScheme } from "@/components/useColorScheme";
 import Colors from "@/constants/Colors";
 
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
+// Usamos MaterialIcons que tiene mejores opciones para el sector ganadero/médico
 function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>["name"];
+  name: React.ComponentProps<typeof MaterialIcons>["name"];
   color: string;
 }) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
+  return <MaterialIcons size={28} style={{ marginBottom: -3 }} {...props} />;
 }
 
 export default function TabLayout() {
@@ -21,25 +21,37 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
+        // Aplicamos los colores de tu diseño
+        tabBarActiveTintColor: '#154212', // Verde oscuro principal
+        tabBarInactiveTintColor: '#5b5f5c', // Gris secundario
         headerShown: useClientOnlyValue(false, true),
+        tabBarStyle: {
+          backgroundColor: '#ffffff',
+          borderTopColor: '#e3e3de',
+          paddingBottom: 5,
+          height: 60,
+        },
+        headerStyle: {
+          backgroundColor: '#154212',
+        },
+        headerTintColor: '#fff',
       }}
     >
+      {/* 1. 🏠 Inicio */}
       <Tabs.Screen
         name="index"
         options={{
-          title: "Tab One",
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
+          title: "Inicio",
+          tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
+          // Botón superior derecho que nos llevará a la sección de Perfil
           headerRight: () => (
-            <Link href="/modal" asChild>
+            <Link href="/perfil" asChild>
               <Pressable>
                 {({ pressed }) => (
-                  <FontAwesome
-                    name="info-circle"
+                  <MaterialIcons
+                    name="person"
                     size={25}
-                    color={Colors[colorScheme ?? "light"].text}
+                    color="#ffffff"
                     style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
                   />
                 )}
@@ -48,11 +60,40 @@ export default function TabLayout() {
           ),
         }}
       />
+      
+      {/* 2. 🐄 Animales */}
       <Tabs.Screen
-        name="two"
+        name="animales"
         options={{
-          title: "Tab Two",
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
+          title: "Animales",
+          tabBarIcon: ({ color }) => <TabBarIcon name="pets" color={color} />,
+        }}
+      />
+      
+      {/* 3. ⚖️ Pesajes */}
+      <Tabs.Screen
+        name="pesajes"
+        options={{
+          title: "Pesajes",
+          tabBarIcon: ({ color }) => <TabBarIcon name="monitor-weight" color={color} />,
+        }}
+      />
+      
+      {/* 4. 💉 Salud */}
+      <Tabs.Screen
+        name="salud"
+        options={{
+          title: "Salud",
+          tabBarIcon: ({ color }) => <TabBarIcon name="medical-services" color={color} />,
+        }}
+      />
+      
+      {/* 5. 🐄 Reproducción */}
+      <Tabs.Screen
+        name="reproduccion"
+        options={{
+          title: "Reproducción",
+          tabBarIcon: ({ color }) => <TabBarIcon name="favorite" color={color} />,
         }}
       />
     </Tabs>
