@@ -1,52 +1,62 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  TextInput, 
-  TouchableOpacity, 
-  FlatList, 
+import { MaterialIcons } from "@expo/vector-icons";
+import React, { useEffect, useState } from "react";
+import {
   ActivityIndicator,
-  RefreshControl,
+  FlatList,
   Image,
+  Modal,
   Platform,
-  Modal
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase';
-import AnimalForm from '../../components/forms/AnimalForm';
-
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import AnimalDetail from "../../components/AnimalDetail";
+import AnimalForm from "../../components/forms/AnimalForm";
+import { supabase } from "../../lib/supabase";
 // Definimos la estructura de nuestro animal según la base de datos
-type Animal = {
+export type Animal = {
   id: string;
+  finca_id: string;
   codigo_animal: string;
-  nombre: string;
+  nombre: string | null;
   especie: string;
-  raza: string;
+  raza: string | null;
+  genero: string | null;
+  fecha_nacimiento: string | null;
+  proposito: string | null;
   estado: string;
+  madre_id: string | null;
+  padre_id: string | null;
   fotografia_url: string | null;
+  notas: string | null;
+  created_at?: string;
 };
 
 export default function AnimalesScreen() {
   const [animales, setAnimales] = useState<Animal[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [isFormVisible, setIsFormVisible] = useState(false);
+
+  const [selectedAnimal, setSelectedAnimal] = useState<Animal | null>(null);
 
   // Función para obtener los animales desde Supabase
   const fetchAnimales = async () => {
     try {
       const { data, error } = await supabase
-        .from('animales')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .from("animales")
+        .select("*")
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       if (data) setAnimales(data);
     } catch (error) {
-      console.error('Error obteniendo animales:', error);
+      console.error("Error obteniendo animales:", error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -63,24 +73,29 @@ export default function AnimalesScreen() {
   };
 
   // Función para filtrar animales localmente por nombre o código
-  const animalesFiltrados = animales.filter(animal => 
-    (animal.nombre?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-    (animal.codigo_animal?.toLowerCase() || '').includes(searchQuery.toLowerCase())
+  const animalesFiltrados = animales.filter(
+    (animal) =>
+      (animal.nombre?.toLowerCase() || "").includes(
+        searchQuery.toLowerCase(),
+      ) ||
+      (animal.codigo_animal?.toLowerCase() || "").includes(
+        searchQuery.toLowerCase(),
+      ),
   );
 
   // Función auxiliar para obtener colores según el estado
   const getStatusStyle = (estado: string) => {
     switch (estado?.toLowerCase()) {
-      case 'activo':
-        return { color: '#2E7D32', bg: '#e8f5e9', border: '#4CAF50' };
-      case 'enfermo':
-      case 'sick':
-        return { color: '#C62828', bg: '#ffebee', border: '#F44336' };
-      case 'cuarentena':
-      case 'quarantine':
-        return { color: '#EF6C00', bg: '#fff3e0', border: '#FF9800' };
+      case "activo":
+        return { color: "#2E7D32", bg: "#e8f5e9", border: "#4CAF50" };
+      case "enfermo":
+      case "sick":
+        return { color: "#C62828", bg: "#ffebee", border: "#F44336" };
+      case "cuarentena":
+      case "quarantine":
+        return { color: "#EF6C00", bg: "#fff3e0", border: "#FF9800" };
       default:
-        return { color: '#5b5f5c', bg: '#f4f4ee', border: '#c4c7c3' };
+        return { color: "#5b5f5c", bg: "#f4f4ee", border: "#c4c7c3" };
     }
   };
 
@@ -89,9 +104,10 @@ export default function AnimalesScreen() {
     const statusStyle = getStatusStyle(item.estado);
 
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.card, { borderLeftColor: statusStyle.border }]}
         activeOpacity={0.7}
+        onPress={() => setSelectedAnimal(item)} // Abrir modal al presionar la tarjeta
       >
         {/* Imagen o Ícono placeholder */}
         <View style={styles.imageContainer}>
@@ -106,16 +122,20 @@ export default function AnimalesScreen() {
         <View style={styles.infoContainer}>
           <View style={styles.cardHeader}>
             <Text style={styles.codeBadge}>{item.codigo_animal}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+            <View
+              style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}
+            >
               <Text style={[styles.statusText, { color: statusStyle.color }]}>
                 {item.estado.toUpperCase()}
               </Text>
             </View>
           </View>
 
-          <Text style={styles.animalName}>{item.nombre || 'Sin nombre'}</Text>
-          <Text style={styles.animalBreed}>{item.especie} • {item.raza || 'Raza no especificada'}</Text>
-          
+          <Text style={styles.animalName}>{item.nombre || "Sin nombre"}</Text>
+          <Text style={styles.animalBreed}>
+            {item.especie} • {item.raza || "Raza no especificada"}
+          </Text>
+
           <View style={styles.weightRow}>
             <MaterialIcons name="monitor-weight" size={14} color="#72796e" />
             <Text style={styles.weightText}>Ver historial</Text>
@@ -126,16 +146,16 @@ export default function AnimalesScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Animales</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.btnScan}>
             <MaterialIcons name="qr-code-scanner" size={18} color="#154212" />
           </TouchableOpacity>
-          
+
           {/* Botón que abre el modal del formulario */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.btnRegister}
             onPress={() => setIsFormVisible(true)}
           >
@@ -147,7 +167,12 @@ export default function AnimalesScreen() {
 
       {/* Barra de Búsqueda */}
       <View style={styles.searchContainer}>
-        <MaterialIcons name="search" size={20} color="#72796e" style={styles.searchIcon} />
+        <MaterialIcons
+          name="search"
+          size={20}
+          color="#72796e"
+          style={styles.searchIcon}
+        />
         <TextInput
           style={styles.searchInput}
           placeholder="Buscar por código o nombre..."
@@ -169,7 +194,11 @@ export default function AnimalesScreen() {
           renderItem={renderAnimalCard}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#154212" />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#154212"
+            />
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
@@ -187,13 +216,28 @@ export default function AnimalesScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setIsFormVisible(false)}
       >
-        <AnimalForm 
-          onClose={() => setIsFormVisible(false)} 
+        <AnimalForm
+          onClose={() => setIsFormVisible(false)}
           onSuccess={() => {
             setIsFormVisible(false);
             fetchAnimales(); // Recarga la lista para mostrar el nuevo registro
-          }} 
+          }}
         />
+      </Modal>
+
+      {/* Modal 2: Detalle del Animal (NUEVO) */}
+      <Modal
+        visible={selectedAnimal !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setSelectedAnimal(null)}
+      >
+        {selectedAnimal && (
+          <AnimalDetail
+            animal={selectedAnimal}
+            onClose={() => setSelectedAnimal(null)}
+          />
+        )}
       </Modal>
     </SafeAreaView>
   );
@@ -202,65 +246,65 @@ export default function AnimalesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f4ee',
+    backgroundColor: "#f4f4ee",
   },
   centerContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#154212',
+    fontWeight: "bold",
+    color: "#154212",
   },
   headerActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
   },
   btnScan: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: '#c2c9bb',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderColor: "#c2c9bb",
+    justifyContent: "center",
+    alignItems: "center",
   },
   btnRegister: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#154212',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#154212",
     paddingHorizontal: 16,
     height: 44,
     borderRadius: 22,
     gap: 4,
   },
   btnRegisterText: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     letterSpacing: 0.5,
   },
   searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
     marginHorizontal: 20,
     marginBottom: 16,
     paddingHorizontal: 12,
     height: 48,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e3e3de',
+    borderColor: "#e3e3de",
   },
   searchIcon: {
     marginRight: 8,
@@ -268,20 +312,20 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: '#1a1c19',
+    color: "#1a1c19",
   },
   listContent: {
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
   card: {
-    flexDirection: 'row',
-    backgroundColor: '#ffffff',
+    flexDirection: "row",
+    backgroundColor: "#ffffff",
     borderRadius: 16,
     padding: 12,
     marginBottom: 12,
     borderLeftWidth: 6,
-    shadowColor: '#2d5a27',
+    shadowColor: "#2d5a27",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 12,
@@ -291,31 +335,31 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 12,
-    backgroundColor: '#f4f4ee',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
+    backgroundColor: "#f4f4ee",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
     marginRight: 12,
   },
   image: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
   infoContainer: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 4,
   },
   codeBadge: {
     fontSize: 11,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    color: '#5b5f5c',
-    backgroundColor: '#f4f4ee',
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    color: "#5b5f5c",
+    backgroundColor: "#f4f4ee",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -328,36 +372,36 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 10,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     letterSpacing: 0.5,
   },
   animalName: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1a1c19',
+    fontWeight: "bold",
+    color: "#1a1c19",
     marginBottom: 2,
   },
   animalBreed: {
     fontSize: 14,
-    color: '#5b5f5c',
+    color: "#5b5f5c",
     marginBottom: 8,
   },
   weightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   weightText: {
     fontSize: 12,
-    color: '#72796e',
+    color: "#72796e",
   },
   emptyContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 60,
   },
   emptyText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#5b5f5c',
+    color: "#5b5f5c",
   },
 });
