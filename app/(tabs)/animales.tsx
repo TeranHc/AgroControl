@@ -9,11 +9,13 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
-  Platform
+  Platform,
+  Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
+import AnimalForm from '../../components/forms/AnimalForm';
 
 // Definimos la estructura de nuestro animal según la base de datos
 type Animal = {
@@ -31,6 +33,7 @@ export default function AnimalesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isFormVisible, setIsFormVisible] = useState(false);
 
   // Función para obtener los animales desde Supabase
   const fetchAnimales = async () => {
@@ -130,7 +133,12 @@ export default function AnimalesScreen() {
           <TouchableOpacity style={styles.btnScan}>
             <MaterialIcons name="qr-code-scanner" size={18} color="#154212" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.btnRegister}>
+          
+          {/* Botón que abre el modal del formulario */}
+          <TouchableOpacity 
+            style={styles.btnRegister}
+            onPress={() => setIsFormVisible(true)}
+          >
             <MaterialIcons name="add" size={20} color="#ffffff" />
             <Text style={styles.btnRegisterText}>REGISTRAR</Text>
           </TouchableOpacity>
@@ -171,6 +179,22 @@ export default function AnimalesScreen() {
           }
         />
       )}
+
+      {/* Modal que contiene el Formulario de Registro */}
+      <Modal
+        visible={isFormVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setIsFormVisible(false)}
+      >
+        <AnimalForm 
+          onClose={() => setIsFormVisible(false)} 
+          onSuccess={() => {
+            setIsFormVisible(false);
+            fetchAnimales(); // Recarga la lista para mostrar el nuevo registro
+          }} 
+        />
+      </Modal>
     </SafeAreaView>
   );
 }
