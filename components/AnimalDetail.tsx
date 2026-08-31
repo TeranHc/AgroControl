@@ -30,6 +30,10 @@ export default function AnimalDetail({
   const [padreNombre, setPadreNombre] = useState<string | null>(null);
   const [madreNombre, setMadreNombre] = useState<string | null>(null);
 
+  const [activeTab, setActiveTab] = useState<
+    "info" | "weights" | "health" | "repro"
+  >("info");
+
   const [aspectRatio, setAspectRatio] = useState(16 / 9);
 
   // Ayuda con el tamaño de la imagen para mantener la relación
@@ -276,6 +280,140 @@ export default function AnimalDetail({
             </TouchableOpacity>
           </View>
         </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabsContainer}
+          contentContainerStyle={styles.tabsContent}
+        >
+          <TouchableOpacity
+            style={[
+              styles.tabItem,
+              activeTab === "info" && styles.activeTabItem,
+            ]}
+            onPress={() => setActiveTab("info")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "info" && styles.activeTabText,
+              ]}
+            >
+              INFORMACIÓN
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.tabItem,
+              activeTab === "weights" && styles.activeTabItem,
+            ]}
+            onPress={() => setActiveTab("weights")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "weights" && styles.activeTabText,
+              ]}
+            >
+              PESAJES
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.tabItem,
+              activeTab === "health" && styles.activeTabItem,
+            ]}
+            onPress={() => setActiveTab("health")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "health" && styles.activeTabText,
+              ]}
+            >
+              SALUD
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.tabItem,
+              activeTab === "repro" && styles.activeTabItem,
+            ]}
+            onPress={() => setActiveTab("repro")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "repro" && styles.activeTabText,
+              ]}
+            >
+              REPRODUCCIÓN
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+        {/* Contenido de la Pestaña Activa */}
+        {activeTab === "info" && (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Información General</Text>
+
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>FECHA DE NACIMIENTO</Text>
+              <Text style={styles.infoValue}>{animal.fecha_nacimiento}</Text>
+            </View>
+
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>PROPÓSITO</Text>
+              <Text style={styles.infoValue}>
+                {animal.proposito || "No especificado"}
+              </Text>
+            </View>
+
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>GENEALOGÍA</Text>
+              <Text style={styles.infoValue}>
+                Padre: {padreNombre || "No registrado"} {"\n"}
+                Madre: {madreNombre || "No registrada"}
+              </Text>
+            </View>
+
+            {animal.notas ? (
+              <View style={styles.notesBox}>
+                <Text style={styles.infoLabel}>NOTAS</Text>
+                <Text style={styles.notesText}>{animal.notas}</Text>
+              </View>
+            ) : null}
+          </View>
+        )}
+
+        {activeTab === "weights" && (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Historial de Pesajes</Text>
+            <Text style={styles.emptyTabContent}>
+              Próximamente lista de pesajes...
+            </Text>
+          </View>
+        )}
+
+        {activeTab === "health" && (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Registros de Salud</Text>
+            <Text style={styles.emptyTabContent}>
+              Próximamente tratamientos y vacunas...
+            </Text>
+          </View>
+        )}
+
+        {activeTab === "repro" && (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Eventos Reproductivos</Text>
+            <Text style={styles.emptyTabContent}>
+              Próximamente servicios y partos...
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -463,5 +601,84 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
     letterSpacing: 0.5,
+  },
+
+  // Estilos de las Pestañas (Tabs)
+  tabsContainer: {
+    marginTop: 20,
+    marginBottom: 12,
+  },
+  tabsContent: {
+    gap: 16,
+    paddingHorizontal: 4,
+  },
+  tabItem: {
+    paddingVertical: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  activeTabItem: {
+    borderBottomColor: "#154212",
+  },
+  tabText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0b0b0b",
+    letterSpacing: 0.5,
+  },
+  activeTabText: {
+    color: "#154212",
+  },
+
+  // Tarjeta de Sección
+  sectionCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#111111",
+    marginBottom: 16,
+  },
+  infoRow: {
+    marginBottom: 16,
+  },
+  infoLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#757575",
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  infoValue: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#222222",
+    lineHeight: 20,
+  },
+  notesBox: {
+    backgroundColor: "#f8f9fa",
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 8,
+  },
+  notesText: {
+    fontSize: 13,
+    color: "#333333",
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  emptyTabContent: {
+    fontSize: 13,
+    color: "#757575",
+    fontStyle: "italic",
   },
 });
