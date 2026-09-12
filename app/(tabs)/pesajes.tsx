@@ -7,50 +7,103 @@ import {
   FlatList, 
   ActivityIndicator,
   RefreshControl,
-  TextInput
+  TextInput,
+  Modal,
+  ScrollView,
+  Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Header from '../../components/Header';
 import { MaterialIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
+import { useActiveFinca } from '../../contexts/ActiveFincaContext';
+import PesajeForm from '../../components/forms/PesajeForm';
+import CustomAlert from '../../components/CustomAlert';
 
 // Definimos la estructura de datos uniendo Pesajes y Animales
 type Pesaje = {
   id: string;
+  animal_id: string;
   peso_kg: number;
   fecha_pesaje: string;
   condicion_corporal: number;
+  notas?: string;
   animales: {
     nombre: string;
     codigo_animal: string;
+    especie?: string;
+    fotografia_url?: string;
   } | null;
 };
 
 export default function PesajesScreen() {
+  const { activeFinca } = useActiveFinca();
   const [pesajes, setPesajes] = useState<Pesaje[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Estadísticas calculadas localmente
-  const [stats, setStats] = useState({
-    recientes: 0,
-    esteMes: 0,
-    promedio: 0,
-    ultimoDias: 'Sin datos'
+  const [filtroEspecie, setFiltroEspecie] = useState<string>('General');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingPesaje, setEditingPesaje] = useState<Pesaje | null>(null);
+  const [viewingPesaje, setViewingPesaje] = useState<Pesaje | null>(null);
+  
+  // Custom Alert para eliminar
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'warning' as 'success'|'error'|'warning'|'info',
+    onConfirm: () => {},
+    onCancel: undefined as (() => void) | undefined,
   });
 
+  const showAlert = (title: string, message: string, type: 'success'|'error'|'warning'|'info', onConfirm: () => void, onCancel?: () => void) => {
+    setAlertConfig({ visible: true, title, message, type, onConfirm, onCancel });
+  };
+
+  const confirmarEliminar = (pesaje: Pesaje) => {
+    showAlert(
+      'Eliminar Pesaje',
+      `¿Estás seguro que deseas eliminar este pesaje de ${pesaje.peso_kg}kg?`,
+      'warning',
+      () => handleDelete(pesaje.id),
+      () => setAlertConfig(prev => ({ ...prev, visible: false }))
+    );
+  };
+
+  const handleDelete = async (id: string) => {
+    setAlertConfig(prev => ({ ...prev, visible: false }));
+    try {
+      const { error } = await supabase.from('pesajes').delete().eq('id', id);
+      if (error) throw error;
+      showAlert('¡Éxito!', 'Pesaje eliminado correctamente.', 'success', () => {
+        setAlertConfig(prev => ({ ...prev, visible: false }));
+        fetchPesajes();
+      });
+    } catch (error: any) {
+      console.error(error);
+      showAlert('Error', 'No se pudo eliminar el pesaje.', 'error', () => setAlertConfig(prev => ({ ...prev, visible: false })));
+    }
+  };
+
+  // Estadísticas calculadas localmente
   const fetchPesajes = async () => {
     try {
-      // Obtenemos los pesajes y hacemos JOIN con la tabla animales
+      if (!activeFinca) return;
+
+      // Obtenemos los pesajes y hacemos JOIN con la tabla animales usando !inner para poder filtrar
       const { data, error } = await supabase
         .from('pesajes')
         .select(`
           id,
+          animal_id,
           peso_kg,
           fecha_pesaje,
           condicion_corporal,
-          animales ( nombre, codigo_animal )
+          notas,
+          animales!inner ( nombre, codigo_animal, finca_id, especie, fotografia_url )
         `)
+        .eq('animales.finca_id', activeFinca.id)
         .order('fecha_pesaje', { ascending: false });
 
       if (error) throw error;
@@ -59,7 +112,6 @@ export default function PesajesScreen() {
         // @ts-ignore (Supabase a veces confunde los tipos en los joins)
         const registros: Pesaje[] = data;
         setPesajes(registros);
-        calcularEstadisticas(registros);
       }
     } catch (error) {
       console.error('Error obteniendo pesajes:', error);
@@ -69,9 +121,33 @@ export default function PesajesScreen() {
     }
   };
 
-  const calcularEstadisticas = (registros: Pesaje[]) => {
-    if (registros.length === 0) return;
+  useEffect(() => {
+    fetchPesajes();
+  }, [activeFinca]);
 
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchPesajes();
+  };
+
+  // Filtrado de la lista basado en búsqueda y especie
+  const pesajesFiltrados = pesajes.filter((p) => {
+    const term = searchQuery.toLowerCase();
+    const animalName = p.animales?.nombre?.toLowerCase() || '';
+    const animalCode = p.animales?.codigo_animal?.toLowerCase() || '';
+    const especie = p.animales?.especie || '';
+    
+    const cumpleBusqueda = animalName.includes(term) || animalCode.includes(term);
+    const cumpleEspecie = filtroEspecie === 'General' || especie === filtroEspecie;
+    
+    return cumpleBusqueda && cumpleEspecie;
+  });
+
+  const especiesDisponibles = ['General', ...Array.from(new Set(pesajes.map(p => p.animales?.especie).filter(Boolean)))];
+
+  // Computar estadísticas a partir de pesajesFiltrados
+  let stats = { recientes: 0, esteMes: 0, promedio: 0, ultimoDias: 'Sin datos' };
+  if (pesajesFiltrados.length > 0) {
     const hoy = new Date();
     const hace7Dias = new Date();
     hace7Dias.setDate(hoy.getDate() - 7);
@@ -80,79 +156,85 @@ export default function PesajesScreen() {
     let recientes = 0;
     let esteMes = 0;
 
-    registros.forEach(p => {
+    pesajesFiltrados.forEach(p => {
       const fecha = new Date(p.fecha_pesaje);
       sumaPesos += Number(p.peso_kg);
-      
       if (fecha >= hace7Dias) recientes++;
       if (fecha.getMonth() === hoy.getMonth() && fecha.getFullYear() === hoy.getFullYear()) esteMes++;
     });
 
-    // Calcular días desde el último pesaje
-    const ultimaFecha = new Date(registros[0].fecha_pesaje);
-    const diffTime = Math.abs(hoy.getTime() - ultimaFecha.getTime());
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    const ultimoPesaje = new Date(pesajesFiltrados[0].fecha_pesaje);
+    const diffTime = Math.abs(hoy.getTime() - ultimoPesaje.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    setStats({
+    stats = {
       recientes,
       esteMes,
-      promedio: Math.round(sumaPesos / registros.length),
+      promedio: Math.round(sumaPesos / pesajesFiltrados.length),
       ultimoDias: diffDays === 0 ? 'Hoy' : `Hace ${diffDays} días`
-    });
+    };
+  }
+
+  const getCondicionCorporalText = (valor?: number) => {
+    switch(valor) {
+      case 1: return 'Muy Flaco';
+      case 2: return 'Flaco';
+      case 3: return 'Normal';
+      case 4: return 'Gordo';
+      case 5: return 'Muy Gordo';
+      default: return 'N/A';
+    }
   };
-
-  useEffect(() => {
-    fetchPesajes();
-  }, []);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchPesajes();
-  };
-
-  // Filtro de búsqueda
-  const pesajesFiltrados = pesajes.filter(p => {
-    if (!p.animales) return false;
-    const busqueda = searchQuery.toLowerCase();
-    return (
-      (p.animales.nombre && p.animales.nombre.toLowerCase().includes(busqueda)) ||
-      (p.animales.codigo_animal && p.animales.codigo_animal.toLowerCase().includes(busqueda))
-    );
-  });
 
   // Renderiza cada tarjeta de pesaje en la lista
   const renderItem = ({ item }: { item: Pesaje }) => {
     const inicial = item.animales?.nombre ? item.animales.nombre.charAt(0).toUpperCase() : 'A';
     
     return (
-      <View style={styles.cardList}>
+      <TouchableOpacity style={styles.cardList} activeOpacity={0.7} onPress={() => setViewingPesaje(item)}>
         <View style={styles.cardListHeader}>
           <View style={styles.cardListProfile}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{inicial}</Text>
-            </View>
+            {item.animales?.fotografia_url ? (
+              <Image source={{ uri: item.animales.fotografia_url }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{inicial}</Text>
+              </View>
+            )}
             <View>
               <Text style={styles.animalName}>{item.animales?.nombre || 'Desconocido'}</Text>
               <Text style={styles.animalMeta}>{item.animales?.codigo_animal} • {item.fecha_pesaje}</Text>
             </View>
           </View>
-          {/* Badge simulado de cambio de peso */}
-          <View style={styles.badgeSuccess}>
-            <Text style={styles.badgeSuccessText}>Registro</Text>
+          <View style={styles.actionButtons}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => { setEditingPesaje(item); setModalVisible(true); }}>
+              <MaterialIcons name="edit" size={18} color="#154212" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => confirmarEliminar(item)}>
+              <MaterialIcons name="delete" size={18} color="#ba1a1a" />
+            </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.cardListBody}>
-          <View>
-            <Text style={styles.dataLabel}>PESO</Text>
-            <Text style={styles.dataValue}>{item.peso_kg} kg</Text>
-          </View>
-          <View>
-            <Text style={styles.dataLabel}>COND. CORP.</Text>
-            <Text style={styles.dataValue}>{item.condicion_corporal}/5</Text>
+          <View style={styles.pesoRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.dataLabel}>PESO</Text>
+              <Text style={styles.dataValue}>{item.peso_kg} kg</Text>
+            </View>
+            <View style={{ flex: 1.2 }}>
+              <Text style={styles.dataLabel}>COND. CORP.</Text>
+              <Text style={styles.dataValue} numberOfLines={1}>{getCondicionCorporalText(item.condicion_corporal)}</Text>
+            </View>
+            <View style={{ flex: 1.5 }}>
+              <Text style={styles.dataLabel}>DESCRIPCIÓN</Text>
+              <Text style={[styles.dataValue, { fontSize: 13, fontWeight: 'normal', color: '#4a5157' }]} numberOfLines={2}>
+                {item.notas || '-'}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -162,10 +244,9 @@ export default function PesajesScreen() {
       {/* Título y Botón */}
       <View style={styles.topRow}>
         <View>
-          <Text style={styles.pageTitle}>Pesajes</Text>
           <Text style={styles.pageSubtitle}>Evolución del peso de los animales.</Text>
         </View>
-        <TouchableOpacity style={styles.btnAdd}>
+        <TouchableOpacity style={styles.btnAdd} onPress={() => { setEditingPesaje(null); setModalVisible(true); }}>
           <MaterialIcons name="add" size={20} color="#fff" />
           <Text style={styles.btnAddText}>REGISTRAR</Text>
         </TouchableOpacity>
@@ -197,39 +278,148 @@ export default function PesajesScreen() {
         <MaterialIcons name="search" size={20} color="#72796e" />
         <TextInput
           style={styles.searchInput}
-          placeholder="Buscar por animal o código..."
+          placeholder="Buscar por código o nombre..."
           placeholderTextColor="#72796e"
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <MaterialIcons name="close" size={20} color="#72796e" />
+          </TouchableOpacity>
+        )}
       </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+        {especiesDisponibles.map(especie => (
+          <TouchableOpacity 
+            key={especie} 
+            style={[styles.filterChip, filtroEspecie === especie && styles.filterChipActive]}
+            onPress={() => setFiltroEspecie(especie)}
+          >
+            <Text style={[styles.filterChipText, filtroEspecie === especie && styles.filterChipTextActive]}>
+              {especie}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
     </View>
   );
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      {loading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#154212" />
-        </View>
-      ) : (
-        <FlatList
-          data={pesajesFiltrados}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          ListHeaderComponent={renderHeader}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#154212" />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <MaterialIcons name="monitor-weight" size={48} color="#c2c9bb" />
-              <Text style={styles.emptyText}>No hay pesajes registrados aún.</Text>
-            </View>
-          }
+      <Header title="Registro de Pesajes" />
+      
+      {renderHeader()}
+
+      <FlatList
+        data={pesajesFiltrados}
+        renderItem={renderItem}
+        keyExtractor={item => item.id}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#154212']} />}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <MaterialIcons name="monitor-weight" size={48} color="#c2c9bb" />
+            <Text style={styles.emptyText}>No hay pesajes registrados</Text>
+          </View>
+        }
+      />
+
+      <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
+        <PesajeForm 
+          onClose={() => setModalVisible(false)} 
+          onSuccess={() => { setModalVisible(false); fetchPesajes(); }} 
+          initialData={editingPesaje}
         />
-      )}
+      </Modal>
+
+      <Modal visible={!!viewingPesaje} animationType="fade" transparent onRequestClose={() => setViewingPesaje(null)}>
+        {viewingPesaje && (
+          <View style={styles.detailOverlay}>
+            <View style={styles.detailContent}>
+              <View style={styles.detailHeader}>
+                <Text style={styles.detailTitle}>Detalle de Pesaje</Text>
+                <TouchableOpacity onPress={() => setViewingPesaje(null)}>
+                  <MaterialIcons name="close" size={24} color="#5b5f5c" />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.detailProfile}>
+                {viewingPesaje.animales?.fotografia_url ? (
+                  <Image source={{ uri: viewingPesaje.animales.fotografia_url }} style={styles.detailAvatarImage} />
+                ) : (
+                  <View style={[styles.avatar, { width: 80, height: 80, borderRadius: 40 }]}>
+                    <Text style={[styles.avatarText, { fontSize: 32 }]}>
+                      {viewingPesaje.animales?.nombre ? viewingPesaje.animales.nombre.charAt(0).toUpperCase() : 'A'}
+                    </Text>
+                  </View>
+                )}
+                <Text style={styles.detailAnimalName}>{viewingPesaje.animales?.nombre || 'Desconocido'}</Text>
+                <Text style={styles.detailAnimalMeta}>{viewingPesaje.animales?.codigo_animal} • {viewingPesaje.animales?.especie}</Text>
+              </View>
+
+              <View style={styles.detailDataRow}>
+                <View style={styles.detailDataCol}>
+                  <Text style={styles.dataLabel}>FECHA</Text>
+                  <Text style={styles.detailDataValue}>{viewingPesaje.fecha_pesaje}</Text>
+                </View>
+                <View style={styles.detailDataCol}>
+                  <Text style={styles.dataLabel}>PESO</Text>
+                  <Text style={styles.detailDataValue}>{viewingPesaje.peso_kg} kg</Text>
+                </View>
+              </View>
+              
+              <View style={styles.detailDataRow}>
+                <View style={styles.detailDataCol}>
+                  <Text style={styles.dataLabel}>COND. CORPORAL</Text>
+                  <Text style={styles.detailDataValue}>{getCondicionCorporalText(viewingPesaje.condicion_corporal)} ({viewingPesaje.condicion_corporal}/5)</Text>
+                </View>
+              </View>
+
+              <View style={styles.detailDataRow}>
+                <View style={styles.detailDataCol}>
+                  <Text style={styles.dataLabel}>DESCRIPCIÓN</Text>
+                  <Text style={[styles.detailDataValue, { fontWeight: 'normal' }]}>{viewingPesaje.notas || 'No hay notas adicionales.'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.detailActions}>
+                <TouchableOpacity 
+                  style={[styles.btnPrimary, { flex: 1 }]} 
+                  onPress={() => {
+                    setViewingPesaje(null);
+                    setEditingPesaje(viewingPesaje);
+                    setModalVisible(true);
+                  }}
+                >
+                  <MaterialIcons name="edit" size={20} color="#fff" />
+                  <Text style={styles.btnPrimaryText}>Editar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.btnSecondary, { flex: 1, borderColor: '#ba1a1a', backgroundColor: '#fff' }]} 
+                  onPress={() => {
+                    setViewingPesaje(null);
+                    confirmarEliminar(viewingPesaje);
+                  }}
+                >
+                  <MaterialIcons name="delete" size={20} color="#ba1a1a" />
+                  <Text style={[styles.btnPrimaryText, { color: '#ba1a1a' }]}>Eliminar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+      </Modal>
+
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onConfirm={alertConfig.onConfirm}
+        onCancel={alertConfig.onCancel}
+      />
     </SafeAreaView>
   );
 }
@@ -320,19 +510,46 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#e3e3de',
+    borderRadius: 8,
     paddingHorizontal: 12,
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e3e3de',
+    height: 40,
     marginBottom: 10,
   },
   searchInput: {
     flex: 1,
+    marginLeft: 8,
     fontSize: 14,
     color: '#1a1c19',
-    marginLeft: 8,
+    outlineStyle: 'none',
+  },
+  filterScroll: {
+    marginBottom: 5,
+  },
+  filterChip: {
+    backgroundColor: '#e3e3de',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  filterChipActive: {
+    backgroundColor: '#154212',
+  },
+  filterChipText: {
+    color: '#42493e',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  filterChipTextActive: {
+    color: '#ffffff',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingHorizontal: 20,
+    marginBottom: 16,
   },
   cardList: {
     backgroundColor: '#ffffff',
@@ -358,14 +575,21 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#e8f5e9',
-    justifyContent: 'center',
+    backgroundColor: '#e7ece6',
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
   },
   avatarText: {
-    color: '#2e7d32',
+    fontSize: 18,
     fontWeight: 'bold',
-    fontSize: 16,
+    color: '#154212',
   },
   animalName: {
     fontSize: 16,
@@ -377,20 +601,132 @@ const styles = StyleSheet.create({
     color: '#5b5f5c',
     marginTop: 2,
   },
-  badgeSuccess: {
-    backgroundColor: '#e8f5e9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
   },
-  badgeSuccessText: {
-    color: '#2e7d32',
-    fontSize: 10,
-    fontWeight: 'bold',
+  actionBtn: {
+    padding: 6,
+    backgroundColor: '#f4f4ee',
+    borderRadius: 6,
   },
   cardListBody: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e3e3de',
+  },
+  pesoRow: {
     flexDirection: 'row',
-    gap: 24,
+    justifyContent: 'space-between',
+  },
+  notesContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f4f4ee',
+  },
+  notesText: {
+    fontSize: 14,
+    color: '#4a5157',
+    fontStyle: 'italic',
+  },
+  emptyOptionsText: {
+    textAlign: 'center',
+    color: '#72796e',
+    marginTop: 20,
+    fontStyle: 'italic',
+  },
+  detailOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  detailContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    width: '100%',
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  detailTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1a1c19',
+  },
+  detailProfile: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  detailAvatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    resizeMode: 'cover',
+    marginBottom: 12,
+  },
+  detailAnimalName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1a1c19',
+  },
+  detailAnimalMeta: {
+    fontSize: 14,
+    color: '#5b5f5c',
+    marginTop: 4,
+  },
+  detailDataRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  detailDataCol: {
+    flex: 1,
+  },
+  detailDataValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1a1c19',
+    marginTop: 4,
+  },
+  detailActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  btnPrimary: {
+    backgroundColor: '#154212',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  btnSecondary: {
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+  },
+  btnPrimaryText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
   dataLabel: {
     fontSize: 10,
@@ -411,5 +747,5 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: '#5b5f5c',
-  }
+  },
 });

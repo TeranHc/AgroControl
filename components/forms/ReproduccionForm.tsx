@@ -1,39 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../../lib/supabase';
 import { useActiveFinca } from '../../contexts/ActiveFincaContext';
 import { SelectInput } from '../SelectInput';
 import CustomAlert, { AlertType } from '../CustomAlert';
 
-interface SaludFormProps {
+interface ReproduccionFormProps {
   onClose: () => void;
   onSuccess: () => void;
   initialAnimalId?: string;
   initialData?: any;
 }
 
-export default function SaludForm({ onClose, onSuccess, initialAnimalId, initialData }: SaludFormProps) {
+export default function ReproduccionForm({ onClose, onSuccess, initialAnimalId, initialData }: ReproduccionFormProps) {
   const isEditing = !!initialData;
   const { activeFinca } = useActiveFinca();
   const [loading, setLoading] = useState(false);
-  const [animales, setAnimales] = useState<{ label: string; value: string }[]>([]);
+  const [hembras, setHembras] = useState<{ label: string; value: string }[]>([]);
+  const [machos, setMachos] = useState<{ label: string; value: string }[]>([]);
 
   // Estados del formulario
-  const [animalId, setAnimalId] = useState(initialData?.animal_id || initialAnimalId || '');
+  const [animalId, setAnimalId] = useState(initialData?.animal_id || initialAnimalId || ''); // La hembra
+  const [machoId, setMachoId] = useState(initialData?.macho_id || '');
   const [tipoEvento, setTipoEvento] = useState(initialData?.tipo_evento || '');
-  const [nombreMedicamento, setNombreMedicamento] = useState(initialData?.nombre_medicamento || '');
-  const [dosis, setDosis] = useState(initialData?.dosis || '');
   
-  const [fechaAplicacion, setFechaAplicacion] = useState<Date>(initialData?.fecha_aplicacion ? new Date(initialData.fecha_aplicacion + 'T12:00:00') : new Date());
-  const [showDatePickerApp, setShowDatePickerApp] = useState(false);
+  const [fechaEvento, setFechaEvento] = useState<Date>(initialData?.fecha_evento ? new Date(initialData.fecha_evento + 'T12:00:00') : new Date());
+  const [showDatePickerEvento, setShowDatePickerEvento] = useState(false);
   
-  const [proximaDosis, setProximaDosis] = useState<Date | null>(initialData?.proxima_dosis ? new Date(initialData.proxima_dosis + 'T12:00:00') : null);
-  const [showDatePickerProx, setShowDatePickerProx] = useState(false);
+  const [estadoGestacion, setEstadoGestacion] = useState(initialData?.estado_gestacion || '');
   
-  const [veterinario, setVeterinario] = useState(initialData?.veterinario_encargado || initialData?.veterinario || '');
-  const [costo, setCosto] = useState(initialData?.costo?.toString() || '');
+  const [fechaProbableParto, setFechaProbableParto] = useState<Date | null>(initialData?.fecha_probable_parto ? new Date(initialData.fecha_probable_parto + 'T12:00:00') : null);
+  const [showDatePickerParto, setShowDatePickerParto] = useState(false);
+  
+  const [criasNacidas, setCriasNacidas] = useState(initialData?.crias_nacidas?.toString() || '');
   const [notas, setNotas] = useState(initialData?.notas || '');
 
   const [alertConfig, setAlertConfig] = useState({
@@ -54,17 +55,24 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
       try {
         const { data, error } = await supabase
           .from('animales')
-          .select('id, codigo_animal, nombre, especie')
+          .select('id, codigo_animal, nombre, especie, genero')
           .eq('finca_id', activeFinca.id)
           .eq('estado', 'Activo')
           .order('codigo_animal', { ascending: true });
 
         if (error) throw error;
         if (data) {
-          setAnimales(data.map(a => ({
+          const hembrasFiltered = data.filter(a => a.genero === 'Hembra').map(a => ({
             label: `${a.codigo_animal} - ${a.nombre || 'Sin nombre'} (${a.especie})`,
             value: a.id
-          })));
+          }));
+          const machosFiltered = data.filter(a => a.genero === 'Macho').map(a => ({
+            label: `${a.codigo_animal} - ${a.nombre || 'Sin nombre'} (${a.especie})`,
+            value: a.id
+          }));
+          
+          setHembras(hembrasFiltered);
+          setMachos([{ label: 'Desconocido / Inseminación Externa', value: '' }, ...machosFiltered]);
         }
       } catch (err) {
         console.error('Error cargando animales:', err);
@@ -81,8 +89,8 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
   };
 
   const handleSave = async () => {
-    if (!animalId || !tipoEvento.trim() || !fechaAplicacion) {
-      showAlert('Campos Obligatorios', 'Por favor complete todos los campos marcados con *', 'warning');
+    if (!animalId || !tipoEvento.trim() || !fechaEvento) {
+      showAlert('Campos Obligatorios', 'Por favor seleccione la hembra, el tipo de evento y la fecha.', 'warning');
       return;
     }
 
@@ -98,25 +106,24 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
         animal_id: animalId,
         registrado_por: user.id,
         tipo_evento: tipoEvento,
-        nombre_medicamento: nombreMedicamento.trim() || null,
-        dosis: dosis.trim() || null,
-        fecha_aplicacion: formatLocalDate(fechaAplicacion),
-        proxima_dosis: proximaDosis ? formatLocalDate(proximaDosis) : null,
-        veterinario_encargado: veterinario.trim() || null,
-        costo: costo ? parseFloat(costo.replace(',', '.')) : null,
+        macho_id: machoId || null,
+        fecha_evento: formatLocalDate(fechaEvento),
+        estado_gestacion: estadoGestacion || null,
+        fecha_probable_parto: fechaProbableParto ? formatLocalDate(fechaProbableParto) : null,
+        crias_nacidas: criasNacidas ? parseInt(criasNacidas) : null,
         notas: notas.trim() || null
       };
 
       let error;
       if (isEditing && initialData?.id) {
         const { error: updateError } = await supabase
-          .from('registros_salud')
+          .from('reproduccion')
           .update(payload)
           .eq('id', initialData.id);
         error = updateError;
       } else {
         const { error: insertError } = await supabase
-          .from('registros_salud')
+          .from('reproduccion')
           .insert(payload);
         error = insertError;
       }
@@ -125,7 +132,7 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
 
       showAlert(
         '¡Éxito!', 
-        isEditing ? 'El registro de salud se ha actualizado correctamente.' : 'El registro de salud se ha guardado correctamente.', 
+        isEditing ? 'El evento reproductivo se ha actualizado correctamente.' : 'El evento reproductivo se ha registrado correctamente.', 
         'success',
         () => {
           setAlertConfig(prev => ({ ...prev, visible: false }));
@@ -134,7 +141,7 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
         }
       );
     } catch (error: any) {
-      console.error('Error guardando registro de salud:', error);
+      console.error('Error guardando registro de reproduccion:', error);
       showAlert('Error', 'No se pudo guardar el registro: ' + error.message, 'error');
     } finally {
       setLoading(false);
@@ -147,18 +154,18 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
         <TouchableOpacity onPress={onClose} style={styles.iconButton}>
           <MaterialIcons name="close" size={24} color="#42493e" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Registro de Salud</Text>
+        <Text style={styles.headerTitle}>Registro de Reproducción</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.sectionCard}>
           <SelectInput
-            label="Animal *"
+            label="Hembra *"
             value={animalId}
-            options={animales}
+            options={hembras}
             onSelect={setAnimalId}
-            placeholder={animales.length > 0 ? "Seleccionar animal..." : "Cargando..."}
+            placeholder={hembras.length > 0 ? "Seleccionar hembra..." : "Cargando hembras..."}
             disabled={!!initialAnimalId}
           />
         </View>
@@ -168,54 +175,29 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
             label="Tipo de Evento *"
             value={tipoEvento}
             options={[
-              { label: 'Vacunación', value: 'Vacunación' },
-              { label: 'Desparasitación', value: 'Desparasitación' },
-              { label: 'Tratamiento Médico', value: 'Tratamiento Médico' },
-              { label: 'Cirugía / Intervención', value: 'Cirugía' },
-              { label: 'Chequeo General', value: 'Chequeo General' },
-              { label: 'Otro', value: 'Otro' }
+              { label: 'Servicio / Monta / Inseminación', value: 'Servicio' },
+              { label: 'Diagnóstico de Gestación', value: 'Diagnóstico' },
+              { label: 'Parto', value: 'Parto' },
+              { label: 'Aborto', value: 'Aborto' },
+              { label: 'Secado', value: 'Secado' }
             ]}
             onSelect={setTipoEvento}
-            placeholder="Seleccione el tipo de evento..."
+            placeholder="Seleccione evento..."
           />
         </View>
 
         <View style={styles.sectionCard}>
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Medicamento / Producto</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ej. Ivermectina"
-                value={nombreMedicamento}
-                onChangeText={setNombreMedicamento}
-              />
-            </View>
-            <View style={{ width: 14 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Dosis</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ej. 10 ml"
-                value={dosis}
-                onChangeText={setDosis}
-              />
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.sectionCard}>
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Fecha Aplicación *</Text>
+              <Text style={styles.label}>Fecha del Evento *</Text>
               {Platform.OS === 'web' ? (
                 <input
                   type="date"
                   max={new Date().toISOString().split('T')[0]}
-                  value={formatLocalDate(fechaAplicacion)}
+                  value={formatLocalDate(fechaEvento)}
                   onChange={(e: any) => {
                     if (e.target.value) {
-                      setFechaAplicacion(new Date(e.target.value + 'T12:00:00'));
+                      setFechaEvento(new Date(e.target.value + 'T12:00:00'));
                     }
                   }}
                   style={{
@@ -227,25 +209,25 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
                 />
               ) : Platform.OS === 'ios' ? (
                 <DateTimePicker
-                  value={fechaAplicacion}
+                  value={fechaEvento}
                   mode="date"
                   display="default"
                   maximumDate={new Date()}
-                  onChange={(e, date) => { setShowDatePickerApp(false); if (date) setFechaAplicacion(date); }}
+                  onChange={(e, date) => { setShowDatePickerEvento(false); if (date) setFechaEvento(date); }}
                   style={{ alignSelf: 'flex-start', marginTop: 8 }}
                 />
               ) : (
                 <>
-                  <TouchableOpacity style={styles.input} onPress={() => setShowDatePickerApp(true)} activeOpacity={0.7}>
-                    <Text style={{ color: '#1a1c19', marginTop: 12 }}>{formatLocalDate(fechaAplicacion)}</Text>
+                  <TouchableOpacity style={styles.input} onPress={() => setShowDatePickerEvento(true)} activeOpacity={0.7}>
+                    <Text style={{ color: '#1a1c19', marginTop: 12 }}>{formatLocalDate(fechaEvento)}</Text>
                   </TouchableOpacity>
-                  {showDatePickerApp && (
+                  {showDatePickerEvento && (
                     <DateTimePicker
-                      value={fechaAplicacion}
+                      value={fechaEvento}
                       mode="date"
                       display="default"
                       maximumDate={new Date()}
-                      onChange={(e, date) => { setShowDatePickerApp(false); if (date) setFechaAplicacion(date); }}
+                      onChange={(e, date) => { setShowDatePickerEvento(false); if (date) setFechaEvento(date); }}
                     />
                   )}
                 </>
@@ -253,84 +235,99 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
             </View>
             <View style={{ width: 14 }} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Próxima Dosis</Text>
-              {Platform.OS === 'web' ? (
-                <input
-                  type="date"
-                  value={proximaDosis ? formatLocalDate(proximaDosis) : ''}
-                  onChange={(e: any) => {
-                    if (e.target.value) {
-                      setProximaDosis(new Date(e.target.value + 'T12:00:00'));
-                    } else {
-                      setProximaDosis(null);
-                    }
-                  }}
-                  style={{
-                    backgroundColor: '#ffffff', border: '1px solid #c2c9bb',
-                    borderRadius: '8px', padding: '0 12px', height: '46px',
-                    fontSize: '14px', color: '#1a1c19', width: '100%',
-                    boxSizing: 'border-box', outline: 'none', fontFamily: 'inherit',
-                  }}
-                />
-              ) : Platform.OS === 'ios' ? (
-                <DateTimePicker
-                  value={proximaDosis || new Date()}
-                  mode="date"
-                  display="default"
-                  onChange={(e, date) => { setShowDatePickerProx(false); if (date) setProximaDosis(date); }}
-                  style={{ alignSelf: 'flex-start', marginTop: 8 }}
-                />
-              ) : (
-                <>
-                  <TouchableOpacity style={styles.input} onPress={() => setShowDatePickerProx(true)} activeOpacity={0.7}>
-                    <Text style={{ color: proximaDosis ? '#1a1c19' : '#9ca3af', marginTop: 12 }}>
-                      {proximaDosis ? formatLocalDate(proximaDosis) : 'Opcional...'}
-                    </Text>
-                  </TouchableOpacity>
-                  {showDatePickerProx && (
-                    <DateTimePicker
-                      value={proximaDosis || new Date()}
-                      mode="date"
-                      display="default"
-                      onChange={(e, date) => { setShowDatePickerProx(false); if (date) setProximaDosis(date); }}
-                    />
-                  )}
-                </>
-              )}
+              <SelectInput
+                label="Estado de Gestación"
+                value={estadoGestacion}
+                options={[
+                  { label: 'Pendiente', value: 'Pendiente' },
+                  { label: 'Positivo (Preñada)', value: 'Positivo' },
+                  { label: 'Negativo (Vacía)', value: 'Negativo' },
+                  { label: 'Completado (Parto)', value: 'Completado' }
+                ]}
+                onSelect={setEstadoGestacion}
+                placeholder="Opcional..."
+              />
             </View>
           </View>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <SelectInput
+            label="Macho (Servicio / Padre)"
+            value={machoId}
+            options={machos}
+            onSelect={setMachoId}
+            placeholder="Seleccionar macho si aplica..."
+          />
         </View>
 
         <View style={styles.sectionCard}>
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Veterinario</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Nombre (Opcional)"
-                value={veterinario}
-                onChangeText={setVeterinario}
-              />
+              <Text style={styles.label}>Fecha Probable de Parto</Text>
+              {Platform.OS === 'web' ? (
+                <input
+                  type="date"
+                  value={fechaProbableParto ? formatLocalDate(fechaProbableParto) : ''}
+                  onChange={(e: any) => {
+                    if (e.target.value) {
+                      setFechaProbableParto(new Date(e.target.value + 'T12:00:00'));
+                    } else {
+                      setFechaProbableParto(null);
+                    }
+                  }}
+                  style={{
+                    backgroundColor: '#ffffff', border: '1px solid #c2c9bb',
+                    borderRadius: '8px', padding: '0 12px', height: '46px',
+                    fontSize: '14px', color: '#1a1c19', width: '100%',
+                    boxSizing: 'border-box', outline: 'none', fontFamily: 'inherit',
+                  }}
+                />
+              ) : Platform.OS === 'ios' ? (
+                <DateTimePicker
+                  value={fechaProbableParto || new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={(e, date) => { setShowDatePickerParto(false); if (date) setFechaProbableParto(date); }}
+                  style={{ alignSelf: 'flex-start', marginTop: 8 }}
+                />
+              ) : (
+                <>
+                  <TouchableOpacity style={styles.input} onPress={() => setShowDatePickerParto(true)} activeOpacity={0.7}>
+                    <Text style={{ color: fechaProbableParto ? '#1a1c19' : '#9ca3af', marginTop: 12 }}>
+                      {fechaProbableParto ? formatLocalDate(fechaProbableParto) : 'Calcular o ingresar...'}
+                    </Text>
+                  </TouchableOpacity>
+                  {showDatePickerParto && (
+                    <DateTimePicker
+                      value={fechaProbableParto || new Date()}
+                      mode="date"
+                      display="default"
+                      onChange={(e, date) => { setShowDatePickerParto(false); if (date) setFechaProbableParto(date); }}
+                    />
+                  )}
+                </>
+              )}
             </View>
             <View style={{ width: 14 }} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Costo ($)</Text>
+              <Text style={styles.label}>Crías Nacidas (En Parto)</Text>
               <TextInput
                 style={styles.input}
-                placeholder="0.00"
+                placeholder="Ej. 1"
                 keyboardType="numeric"
-                value={costo}
-                onChangeText={setCosto}
+                value={criasNacidas}
+                onChangeText={setCriasNacidas}
               />
             </View>
           </View>
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.label}>Notas Adicionales</Text>
+          <Text style={styles.label}>Notas y Observaciones</Text>
           <TextInput 
             style={[styles.input, styles.textArea]} 
-            placeholder="Observaciones de la aplicación..." 
+            placeholder="Detalles sobre complicaciones, número de pajuela, tipo de parto..." 
             multiline 
             numberOfLines={3} 
             value={notas} 

@@ -4,6 +4,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { ActiveFincaProvider } from '../contexts/ActiveFincaContext';
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
@@ -53,9 +54,11 @@ export default function RootLayout() {
 
   // Si todo está bien, cargamos los grupos de navegación
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(tabs)" />
-    </Stack>
+    <ActiveFincaProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+    </ActiveFincaProvider>
   );
 }

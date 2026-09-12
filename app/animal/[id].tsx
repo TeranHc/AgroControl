@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
   Alert,
+  Modal,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -31,6 +32,11 @@ type Animal = {
   notas: string | null;
 };
 
+import AnimalForm from "../../components/forms/AnimalForm";
+import PesajeForm from "../../components/forms/PesajeForm";
+import SaludForm from "../../components/forms/SaludForm";
+import ReproduccionForm from "../../components/forms/ReproduccionForm";
+
 export default function AnimalDetailScreen() {
   // Expo Router tools
   const { id } = useLocalSearchParams(); // Atrapa el ID de la URL
@@ -39,6 +45,10 @@ export default function AnimalDetailScreen() {
   // Estados principales
   const [animal, setAnimal] = useState<Animal | null>(null);
   const [loadingAnimal, setLoadingAnimal] = useState(true);
+  const [modalAnimalVisible, setModalAnimalVisible] = useState(false);
+  const [modalPesajeVisible, setModalPesajeVisible] = useState(false);
+  const [modalSaludVisible, setModalSaludVisible] = useState(false);
+  const [modalReproVisible, setModalReproVisible] = useState(false);
   
   // Estados secundarios
   const [ultimoPeso, setUltimoPeso] = useState<number | null>(null);
@@ -46,8 +56,10 @@ export default function AnimalDetailScreen() {
   const [padreNombre, setPadreNombre] = useState<string | null>(null);
   const [madreNombre, setMadreNombre] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"info" | "weights" | "health" | "repro">("info");
-  const [aspectRatio, setAspectRatio] = useState(16 / 9);
+  // Historiales
+  const [historialPesajes, setHistorialPesajes] = useState<any[]>([]);
+  const [historialSalud, setHistorialSalud] = useState<any[]>([]);
+  const [historialRepro, setHistorialRepro] = useState<any[]>([]);
 
   // 1. Cargar el animal principal desde Supabase
   useEffect(() => {
@@ -73,18 +85,6 @@ export default function AnimalDetailScreen() {
     if (id) fetchAnimal();
   }, [id]);
 
-  // Ajuste de imagen
-  useEffect(() => {
-    if (animal?.fotografia_url) {
-      Image.getSize(
-        animal.fotografia_url,
-        (width, height) => {
-          if (width && height) setAspectRatio(width / height);
-        },
-        (error) => console.error("Error obteniendo tamaño de imagen:", error)
-      );
-    }
-  }, [animal?.fotografia_url]);
 
   // Cargar último peso
   useEffect(() => {
@@ -136,6 +136,28 @@ export default function AnimalDetailScreen() {
     fetchPadres();
   }, [animal]);
 
+  // Cargar historiales (Pesajes, Salud, Reproducción)
+  const fetchHistoriales = async () => {
+    if (!animal) return;
+    try {
+      const [pesajesRes, saludRes, reproRes] = await Promise.all([
+        supabase.from('pesajes').select('*').eq('animal_id', animal.id).order('fecha_pesaje', { ascending: false }),
+        supabase.from('registros_salud').select('*').eq('animal_id', animal.id).order('fecha_aplicacion', { ascending: false }),
+        supabase.from('reproduccion').select('*').eq('animal_id', animal.id).order('fecha_evento', { ascending: false })
+      ]);
+      
+      if (pesajesRes.data) setHistorialPesajes(pesajesRes.data);
+      if (saludRes.data) setHistorialSalud(saludRes.data);
+      if (reproRes.data) setHistorialRepro(reproRes.data);
+    } catch (err) {
+      console.error("Error al cargar historiales:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistoriales();
+  }, [animal]);
+
   // Cálculo de edad
   const calcularEdad = (fechaNacimiento: string | null) => {
     if (!fechaNacimiento) return "No registrada";
@@ -184,9 +206,9 @@ export default function AnimalDetailScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.card}>
             {/* Foto y Estado */}
-            <View style={[styles.imageContainer, { aspectRatio }]}>
+            <View style={styles.imageContainer}>
               {animal.fotografia_url ? (
-                <Image source={{ uri: animal.fotografia_url }} style={styles.image} resizeMode="contain" />
+                <Image source={{ uri: animal.fotografia_url }} style={styles.image} resizeMode="cover" />
               ) : (
                 <View style={styles.placeholderImage}>
                   <MaterialIcons name="pets" size={64} color="#a1d494" />
@@ -200,19 +222,23 @@ export default function AnimalDetailScreen() {
 
             {/* Encabezado e Info Principal */}
             <View style={styles.headerInfo}>
-              <Text style={styles.codeText}>CÓDIGO: {animal.codigo_animal}</Text>
-              <Text style={styles.animalName}>{animal.nombre || "Sin nombre"}</Text>
+              <View style={styles.titleRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.codeText}>CÓDIGO: {animal.codigo_animal}</Text>
+                  <Text style={styles.animalName}>{animal.nombre || "Sin nombre"}</Text>
+                </View>
 
-              <View style={styles.actionButtonsRow}>
-                <TouchableOpacity style={styles.circularBtn}>
-                  <MaterialIcons name="qr-code-2" size={20} color="#424242" />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.circularBtn} 
-                  onPress={() => Alert.alert("Próximamente", "Aquí abriremos el formulario para editar a este animal.")}
-                >
-                  <MaterialIcons name="edit" size={20} color="#424242" />
-                </TouchableOpacity>
+                <View style={styles.actionButtonsRow}>
+                  <TouchableOpacity style={styles.circularBtn} onPress={() => Alert.alert('Próximamente', 'Módulo de escáner en desarrollo.')}>
+                    <MaterialIcons name="qr-code-2" size={20} color="#424242" />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.circularBtn} 
+                    onPress={() => setModalAnimalVisible(true)}
+                  >
+                    <MaterialIcons name="edit" size={20} color="#424242" />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.grid}>
@@ -232,96 +258,218 @@ export default function AnimalDetailScreen() {
                   <Text style={styles.gridLabel}>EDAD</Text>
                   <Text style={styles.gridValue}>{calcularEdad(animal.fecha_nacimiento)}</Text>
                 </View>
-                <View style={[styles.gridBox, styles.gridBoxHighlighted]}>
-                  <Text style={styles.gridLabel}>ÚLTIMO PESO</Text>
-                  {loadingPeso ? (
-                    <ActivityIndicator size="small" color="#154212" />
-                  ) : (
-                    <Text style={styles.gridValue}>{ultimoPeso !== null ? `${ultimoPeso} kg` : "Sin datos"}</Text>
-                  )}
+                <View style={[styles.gridBox, styles.gridBoxHighlighted, { width: "100%", flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+                  <View>
+                    <Text style={styles.gridLabel}>ÚLTIMO PESO</Text>
+                    {loadingPeso ? (
+                      <ActivityIndicator size="small" color="#154212" style={{ alignSelf: 'flex-start', marginTop: 4 }} />
+                    ) : (
+                      <Text style={styles.gridValue}>{ultimoPeso !== null ? `${ultimoPeso} kg` : "Sin datos"}</Text>
+                    )}
+                  </View>
+                  <MaterialIcons name="monitor-weight" size={24} color="#154212" />
                 </View>
               </View>
 
-              <View style={styles.divider} />
-
-              <TouchableOpacity style={styles.btnRecordWeight} onPress={() => Alert.alert("Próximamente", "Abrir modal de registrar pesaje")}>
-                <MaterialIcons name="add" size={20} color="#ffffff" />
-                <Text style={styles.btnRecordWeightText}>REGISTRAR PESO</Text>
-              </TouchableOpacity>
             </View>
           </View>
 
-          {/* Menú de Pestañas Interiores */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainer} contentContainerStyle={styles.tabsContent}>
-            {/* ... tus tabs ... */}
-            <TouchableOpacity style={[styles.tabItem, activeTab === "info" && styles.activeTabItem]} onPress={() => setActiveTab("info")}>
-              <Text style={[styles.tabText, activeTab === "info" && styles.activeTabText]}>INFORMACIÓN</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.tabItem, activeTab === "weights" && styles.activeTabItem]} onPress={() => setActiveTab("weights")}>
-              <Text style={[styles.tabText, activeTab === "weights" && styles.activeTabText]}>PESAJES</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.tabItem, activeTab === "health" && styles.activeTabItem]} onPress={() => setActiveTab("health")}>
-              <Text style={[styles.tabText, activeTab === "health" && styles.activeTabText]}>SALUD</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.tabItem, activeTab === "repro" && styles.activeTabItem]} onPress={() => setActiveTab("repro")}>
-              <Text style={[styles.tabText, activeTab === "repro" && styles.activeTabText]}>REPRODUCCIÓN</Text>
-            </TouchableOpacity>
-          </ScrollView>
-
-          {/* Contenido de la pestaña activa */}
-          {activeTab === "info" && (
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Información General</Text>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>FECHA DE NACIMIENTO</Text>
-                <Text style={styles.infoValue}>{animal.fecha_nacimiento || 'No registrada'}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>PROPÓSITO</Text>
-                <Text style={styles.infoValue}>{animal.proposito || "No especificado"}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>GENEALOGÍA</Text>
-                <Text style={styles.infoValue}>Padre: {padreNombre || "No registrado"}{"\n"}Madre: {madreNombre || "No registrada"}</Text>
-              </View>
-              {animal.notas ? (
-                <View style={styles.notesBox}>
-                  <Text style={styles.infoLabel}>NOTAS</Text>
-                  <Text style={styles.notesText}>{animal.notas}</Text>
-                </View>
-              ) : null}
+          {/* Contenido Completo */}
+          <View style={{ height: 20 }} />
+          
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Información General</Text>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>FECHA DE NACIMIENTO</Text>
+              <Text style={styles.infoValue}>{animal.fecha_nacimiento || 'No registrada'}</Text>
             </View>
-          )}
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>PROPÓSITO</Text>
+              <Text style={styles.infoValue}>{animal.proposito || "No especificado"}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>GENEALOGÍA</Text>
+              <Text style={styles.infoValue}>Padre: {padreNombre || "No registrado"}{"\n"}Madre: {madreNombre || "No registrada"}</Text>
+            </View>
+            {animal.notas ? (
+              <View style={styles.notesBox}>
+                <Text style={styles.infoLabel}>NOTAS</Text>
+                <Text style={styles.notesText}>{animal.notas}</Text>
+              </View>
+            ) : null}
+          </View>
 
-          {activeTab === "weights" && (
-            <View style={styles.sectionCard}>
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Historial de Pesajes</Text>
-              <Text style={styles.emptyTabContent}>Próximamente lista de pesajes...</Text>
+              <TouchableOpacity style={styles.btnAdd} onPress={() => setModalPesajeVisible(true)}>
+                <MaterialIcons name="add" size={16} color="#ffffff" />
+                <Text style={styles.btnAddText}>AÑADIR</Text>
+              </TouchableOpacity>
             </View>
-          )}
+            {historialPesajes.length === 0 ? (
+              <Text style={styles.emptyTabContent}>No hay pesajes registrados.</Text>
+            ) : (
+              historialPesajes.map((p, idx) => (
+                <View key={p.id} style={[styles.detailBlock, idx !== historialPesajes.length - 1 && styles.borderBottom]}>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailDate}><MaterialIcons name="event" size={14} color="#72796e" /> {p.fecha_pesaje}</Text>
+                  </View>
+                  <View style={styles.grid}>
+                    <View style={styles.gridBox}>
+                      <Text style={styles.gridLabel}>PESO</Text>
+                      <Text style={styles.gridValue}>{p.peso_kg} kg</Text>
+                    </View>
+                    <View style={styles.gridBox}>
+                      <Text style={styles.gridLabel}>CONDICIÓN</Text>
+                      <Text style={styles.gridValue}>{p.condicion_corporal || "N/D"}</Text>
+                    </View>
+                  </View>
+                  {p.notas ? (
+                    <Text style={styles.detailNotes}>Notas: {p.notas}</Text>
+                  ) : null}
+                </View>
+              ))
+            )}
+          </View>
 
-          {activeTab === "health" && (
-            <View style={styles.sectionCard}>
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Registros de Salud</Text>
-              <Text style={styles.emptyTabContent}>Próximamente tratamientos y vacunas...</Text>
+              <TouchableOpacity style={styles.btnAdd} onPress={() => setModalSaludVisible(true)}>
+                <MaterialIcons name="add" size={16} color="#ffffff" />
+                <Text style={styles.btnAddText}>AÑADIR</Text>
+              </TouchableOpacity>
             </View>
-          )}
+            {historialSalud.length === 0 ? (
+              <Text style={styles.emptyTabContent}>No hay registros de salud.</Text>
+            ) : (
+              historialSalud.map((s, idx) => (
+                <View key={s.id} style={[styles.detailBlock, idx !== historialSalud.length - 1 && styles.borderBottom]}>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.historyTitle}>{s.tipo_evento?.toUpperCase()}</Text>
+                    <Text style={styles.detailDate}><MaterialIcons name="event" size={14} color="#72796e" /> {s.fecha_aplicacion}</Text>
+                  </View>
+                  
+                  <View style={styles.grid}>
+                    <View style={styles.gridBox}>
+                      <Text style={styles.gridLabel}>MEDICAMENTO</Text>
+                      <Text style={styles.gridValue} numberOfLines={1}>{s.nombre_medicamento || 'Sin medicamento'}</Text>
+                    </View>
+                    <View style={styles.gridBox}>
+                      <Text style={styles.gridLabel}>DOSIS</Text>
+                      <Text style={styles.gridValue}>{s.dosis || "N/D"}</Text>
+                    </View>
+                    <View style={styles.gridBox}>
+                      <Text style={styles.gridLabel}>VETERINARIO</Text>
+                      <Text style={styles.gridValue} numberOfLines={1}>{s.veterinario_encargado || "No registrado"}</Text>
+                    </View>
+                    <View style={styles.gridBox}>
+                      <Text style={styles.gridLabel}>COSTO</Text>
+                      <Text style={styles.gridValue}>{s.costo ? `$${s.costo}` : "N/D"}</Text>
+                    </View>
+                  </View>
+                  {s.proxima_dosis ? (
+                     <Text style={[styles.detailNotes, { color: '#2e7d32', fontWeight: 'bold' }]}>Próxima Dosis: {s.proxima_dosis}</Text>
+                  ) : null}
+                  {s.notas ? (
+                    <Text style={styles.detailNotes}>Notas: {s.notas}</Text>
+                  ) : null}
+                </View>
+              ))
+            )}
+          </View>
 
-          {activeTab === "repro" && (
-            <View style={styles.sectionCard}>
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Eventos Reproductivos</Text>
-              <Text style={styles.emptyTabContent}>Próximamente servicios y partos...</Text>
+              <TouchableOpacity style={styles.btnAdd} onPress={() => setModalReproVisible(true)}>
+                <MaterialIcons name="add" size={16} color="#ffffff" />
+                <Text style={styles.btnAddText}>AÑADIR</Text>
+              </TouchableOpacity>
             </View>
-          )}
+            {historialRepro.length === 0 ? (
+              <Text style={styles.emptyTabContent}>No hay eventos reproductivos.</Text>
+            ) : (
+              historialRepro.map((r, idx) => (
+                <View key={r.id} style={[styles.detailBlock, idx !== historialRepro.length - 1 && styles.borderBottom]}>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.historyTitle}>{r.tipo_evento?.toUpperCase()}</Text>
+                    <Text style={styles.detailDate}><MaterialIcons name="event" size={14} color="#72796e" /> {r.fecha_evento}</Text>
+                  </View>
+
+                  <View style={styles.grid}>
+                    <View style={styles.gridBox}>
+                      <Text style={styles.gridLabel}>ESTADO</Text>
+                      <Text style={styles.gridValue}>{r.estado_gestacion || "N/D"}</Text>
+                    </View>
+                    <View style={styles.gridBox}>
+                      <Text style={styles.gridLabel}>CRÍAS NACIDAS</Text>
+                      <Text style={styles.gridValue}>{r.crias_nacidas !== null ? r.crias_nacidas : "N/D"}</Text>
+                    </View>
+                  </View>
+                  {r.fecha_probable_parto ? (
+                     <Text style={[styles.detailNotes, { color: '#2e7d32', fontWeight: 'bold' }]}>Fecha Probable de Parto: {r.fecha_probable_parto}</Text>
+                  ) : null}
+                  {r.notas ? (
+                    <Text style={styles.detailNotes}>Notas: {r.notas}</Text>
+                  ) : null}
+                </View>
+              ))
+            )}
+          </View>
 
         </ScrollView>
+
+        {/* Modales */}
+        <Modal visible={modalAnimalVisible} animationType="slide" onRequestClose={() => setModalAnimalVisible(false)}>
+          <AnimalForm 
+            onClose={() => setModalAnimalVisible(false)} 
+            onSuccess={() => { setModalAnimalVisible(false); fetchHistoriales(); }}
+            initialData={animal}
+          />
+        </Modal>
+
+        <Modal visible={modalPesajeVisible} animationType="slide" onRequestClose={() => setModalPesajeVisible(false)}>
+          <PesajeForm 
+            onClose={() => setModalPesajeVisible(false)} 
+            onSuccess={() => { setModalPesajeVisible(false); fetchHistoriales(); }}
+            initialAnimalId={animal.id}
+          />
+        </Modal>
+
+        <Modal visible={modalSaludVisible} animationType="slide" onRequestClose={() => setModalSaludVisible(false)}>
+          <SaludForm 
+            onClose={() => setModalSaludVisible(false)} 
+            onSuccess={() => { setModalSaludVisible(false); fetchHistoriales(); }}
+            initialAnimalId={animal.id}
+          />
+        </Modal>
+
+        <Modal visible={modalReproVisible} animationType="slide" onRequestClose={() => setModalReproVisible(false)}>
+          <ReproduccionForm 
+            onClose={() => setModalReproVisible(false)} 
+            onSuccess={() => { setModalReproVisible(false); fetchHistoriales(); }}
+            initialAnimalId={animal.id}
+          />
+        </Modal>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#f1f0ea" },
+  detailBlock: { paddingVertical: 14 },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  detailDate: { fontSize: 13, color: '#5b5f5c', fontWeight: '500' },
+  detailNotes: { fontSize: 13, color: '#4a5157', marginTop: 10, fontStyle: 'italic' },
+  historyRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
+  borderBottom: { borderBottomWidth: 1, borderBottomColor: '#e3e3de' },
+  historyDate: { fontSize: 12, color: '#72796e', marginBottom: 2 },
+  historyTitle: { fontSize: 15, fontWeight: 'bold', color: '#1a1c19' },
+  historySubtitle: { fontSize: 14, color: '#42493e' },
+  historyValue: { fontSize: 16, fontWeight: 'bold', color: '#154212' },
+  safeArea: { flex: 1, backgroundColor: '#f4f4ee' },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f1f0ea" },
   container: { flex: 1, backgroundColor: "#f1f0ea" },
   topBar: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
@@ -329,16 +477,17 @@ const styles = StyleSheet.create({
   btnBackText: { fontSize: 12, fontWeight: "bold", color: "#424242", letterSpacing: 0.5 },
   scrollContent: { padding: 16 },
   card: { backgroundColor: "#ffffff", borderRadius: 20, overflow: "hidden", elevation: 3, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8 },
-  imageContainer: { width: "100%", backgroundColor: "#e8f5e9", overflow: "hidden", justifyContent: "center", alignItems: "center" },
+  imageContainer: { width: "100%", height: 250, backgroundColor: "#e8f5e9", overflow: "hidden", justifyContent: "center", alignItems: "center" },
   image: { width: "100%", height: "100%" },
   placeholderImage: { flex: 1, justifyContent: "center", alignItems: "center" },
   statusBadge: { position: "absolute", top: 16, left: 16, flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, gap: 6 },
   statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#ffffff" },
   statusText: { color: "#ffffff", fontSize: 11, fontWeight: "bold", letterSpacing: 0.5 },
   headerInfo: { padding: 20 },
+  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 },
   codeText: { fontSize: 13, color: "#757575", fontWeight: "500", marginBottom: 4 },
-  animalName: { fontSize: 30, fontWeight: "800", color: "#111111", marginBottom: 12 },
-  actionButtonsRow: { flexDirection: "row", gap: 12, marginBottom: 20 },
+  animalName: { fontSize: 28, fontWeight: "800", color: "#111111" },
+  actionButtonsRow: { flexDirection: "row", gap: 8 },
   circularBtn: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: "#e0e0e0", justifyContent: "center", alignItems: "center", backgroundColor: "#ffffff" },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 16 },
   gridBox: { width: "48%", backgroundColor: "#f4f3ef", borderRadius: 12, padding: 12, justifyContent: "center" },
@@ -355,7 +504,10 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 12, fontWeight: "700", color: "#0b0b0b", letterSpacing: 0.5 },
   activeTabText: { color: "#154212" },
   sectionCard: { backgroundColor: "#ffffff", borderRadius: 20, padding: 20, marginBottom: 20, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4 },
-  sectionTitle: { fontSize: 18, fontWeight: "800", color: "#111111", marginBottom: 16 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: "800", color: "#111111" },
+  btnAdd: { backgroundColor: '#154212', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  btnAddText: { color: '#ffffff', fontSize: 12, fontWeight: 'bold' },
   infoRow: { marginBottom: 16 },
   infoLabel: { fontSize: 10, fontWeight: "700", color: "#757575", letterSpacing: 0.5, marginBottom: 4 },
   infoValue: { fontSize: 14, fontWeight: "600", color: "#222222", lineHeight: 20 },

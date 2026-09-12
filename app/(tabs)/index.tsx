@@ -1,13 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
+import Header from '../../components/Header';
+import { useActiveFinca } from '../../contexts/ActiveFincaContext';
+import AnimalForm from '../../components/forms/AnimalForm';
+import PesajeForm from '../../components/forms/PesajeForm';
 
 export default function HomeScreen() {
+  const router = useRouter();
+  const { activeFinca, loadingFincas } = useActiveFinca();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [fincaName, setFincaName] = useState('Mi Finca');
+
+  const [modalAnimalVisible, setModalAnimalVisible] = useState(false);
+  const [modalPesajeVisible, setModalPesajeVisible] = useState(false);
   
   const [stats, setStats] = useState({
     total: 0,
@@ -20,24 +29,11 @@ export default function HomeScreen() {
 
   const fetchDashboardData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // 1. Obtener el nombre real de la finca del usuario
-      const { data: miembro } = await supabase
-        .from('miembros_finca')
-        .select('fincas(nombre)')
-        .eq('user_id', user.id)
-        .single();
-
-      if (miembro && miembro.fincas) {
-        // @ts-ignore
-        setFincaName(miembro.fincas.nombre);
-      }
+      if (!activeFinca) return;
 
       const hoy = new Date().toISOString().split('T')[0];
 
-      // 2. Consultar las métricas de todas las tablas en paralelo
+      // 2. Consultar las métricas de todas las tablas filtradas por finca_id
       const [
         { count: total },
         { count: activos },
@@ -46,12 +42,12 @@ export default function HomeScreen() {
         { count: gestaciones },
         { count: alertasSalud }
       ] = await Promise.all([
-        supabase.from('animales').select('*', { count: 'exact', head: true }),
-        supabase.from('animales').select('*', { count: 'exact', head: true }).eq('estado', 'Activo'),
-        supabase.from('animales').select('*', { count: 'exact', head: true }).eq('genero', 'Macho'),
-        supabase.from('animales').select('*', { count: 'exact', head: true }).eq('genero', 'Hembra'),
-        supabase.from('reproduccion').select('*', { count: 'exact', head: true }).eq('estado_gestacion', 'Confirmada'),
-        supabase.from('registros_salud').select('*', { count: 'exact', head: true }).lt('proxima_dosis', hoy)
+        supabase.from('animales').select('*', { count: 'exact', head: true }).eq('finca_id', activeFinca.id),
+        supabase.from('animales').select('*', { count: 'exact', head: true }).eq('estado', 'Activo').eq('finca_id', activeFinca.id),
+        supabase.from('animales').select('*', { count: 'exact', head: true }).eq('genero', 'Macho').eq('finca_id', activeFinca.id),
+        supabase.from('animales').select('*', { count: 'exact', head: true }).eq('genero', 'Hembra').eq('finca_id', activeFinca.id),
+        supabase.from('reproduccion').select('*', { count: 'exact', head: true }).eq('estado_gestacion', 'Confirmada').eq('finca_id', activeFinca.id),
+        supabase.from('registros_salud').select('*', { count: 'exact', head: true }).lt('proxima_dosis', hoy).eq('finca_id', activeFinca.id)
       ]);
 
       setStats({
@@ -71,8 +67,10 @@ export default function HomeScreen() {
   };
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    if (!loadingFincas) {
+      fetchDashboardData();
+    }
+  }, [activeFinca, loadingFincas]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -88,22 +86,17 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
+      <Header title="Inicio" />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#154212" />
         }
       >
-        {/* Encabezado */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>Panel Principal</Text>
-            <Text style={styles.fincaName}>{fincaName}</Text>
-          </View>
-          <TouchableOpacity style={styles.profileBtn}>
-            <MaterialIcons name="person" size={24} color="#154212" />
-          </TouchableOpacity>
+        <View style={{ marginBottom: 20 }}>
+          <Text style={styles.greeting}>Bienvenido a</Text>
+          <Text style={styles.fincaName}>{activeFinca ? activeFinca.nombre : ''}</Text>
         </View>
 
         {/* Cuadrícula de Estadísticas */}
@@ -170,21 +163,38 @@ export default function HomeScreen() {
         {/* Acciones Rápidas */}
         <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
         <View style={styles.actionsContainer}>
-          <TouchableOpacity style={styles.actionBtnPrimary}>
+          <TouchableOpacity style={styles.actionBtnPrimary} onPress={() => setModalAnimalVisible(true)}>
             <MaterialIcons name="add-circle" size={20} color="#ffffff" />
             <Text style={styles.actionBtnPrimaryText}>REGISTRAR ANIMAL</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtnSecondary}>
+          <TouchableOpacity style={styles.actionBtnSecondary} onPress={() => setModalPesajeVisible(true)}>
             <MaterialIcons name="monitor-weight" size={20} color="#154212" />
             <Text style={styles.actionBtnSecondaryText}>NUEVO PESAJE</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtnSecondary}>
+          <TouchableOpacity style={styles.actionBtnSecondary} onPress={() => Alert.alert('Próximamente', 'Módulo de escáner en desarrollo.')}>
             <MaterialIcons name="qr-code-scanner" size={20} color="#154212" />
             <Text style={styles.actionBtnSecondaryText}>ESCANEAR QR</Text>
           </TouchableOpacity>
         </View>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
-    </SafeAreaView>
+
+      {/* Modales */}
+      <Modal visible={modalAnimalVisible} animationType="slide" onRequestClose={() => setModalAnimalVisible(false)}>
+        <AnimalForm 
+          onClose={() => setModalAnimalVisible(false)} 
+          onSuccess={() => { setModalAnimalVisible(false); fetchDashboardData(); }} 
+        />
+      </Modal>
+
+      <Modal visible={modalPesajeVisible} animationType="slide" onRequestClose={() => setModalPesajeVisible(false)}>
+        <PesajeForm 
+          onClose={() => setModalPesajeVisible(false)} 
+          onSuccess={() => { setModalPesajeVisible(false); fetchDashboardData(); }} 
+        />
+      </Modal>
+    </View>
   );
 }
 

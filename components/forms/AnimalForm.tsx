@@ -9,10 +9,14 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../lib/supabase';
+import { useActiveFinca } from '../../contexts/ActiveFincaContext';
+import { SelectInput } from '../SelectInput';
+import CustomAlert, { AlertType } from '../CustomAlert';
 
 interface AnimalFormProps {
   onClose: () => void;
   onSuccess: () => void;
+  initialData?: any; // Para modo edición
 }
 
 // Lista detallada de especies con su prefijo para autogenerar códigos
@@ -27,161 +31,61 @@ export const ESPECIES = [
   { label: 'Otro', value: 'Otro', prefix: 'AN' },
 ];
 
-// --- COMPONENTE MEJORADO PARA LAS LISTAS DESPLEGABLES CON BÚSQUEDA ---
-const SelectInput = ({ 
-  label, 
-  value, 
-  options, 
-  onSelect, 
-  placeholder,
-  disabled = false
-}: {
-  label: string;
-  value: string;
-  options: { label: string; value: string }[];
-  onSelect: (val: string) => void;
-  placeholder: string;
-  disabled?: boolean;
-}) => {
-  const [modalVisible, setModalVisible] = useState(false);
-  const [busqueda, setBusqueda] = useState('');
 
-  const opcionesFiltradas = options.filter(o => 
-    o.label.toLowerCase().includes(busqueda.toLowerCase())
-  );
-
-  const selectedLabel = options.find((o) => o.value === value)?.label;
-
-  return (
-    <View style={{ flex: 1 }}>
-      <Text style={styles.label}>{label}</Text>
-      <TouchableOpacity 
-        style={[styles.selectInput, disabled && { opacity: 0.6, backgroundColor: '#ecece8' }]} 
-        onPress={() => !disabled && setModalVisible(true)}
-        disabled={disabled}
-      >
-        <Text numberOfLines={1} style={{ color: value ? '#1a1c19' : '#9ca3af', fontSize: 14, flex: 1 }}>
-          {selectedLabel || placeholder}
-        </Text>
-        <MaterialIcons name="arrow-drop-down" size={24} color="#72796e" />
-      </TouchableOpacity>
-
-      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Seleccione {label.replace('*', '').trim()}</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <MaterialIcons name="close" size={22} color="#5b5f5c" />
-              </TouchableOpacity>
-            </View>
-
-            {options.length > 5 && (
-              <View style={styles.modalSearchContainer}>
-                <MaterialIcons name="search" size={18} color="#72796e" style={{ marginRight: 6 }} />
-                <TextInput
-                  style={styles.modalSearchInput}
-                  placeholder="Buscar..."
-                  placeholderTextColor="#9ca3af"
-                  value={busqueda}
-                  onChangeText={setBusqueda}
-                />
-              </View>
-            )}
-
-            <FlatList
-              data={opcionesFiltradas}
-              keyExtractor={(item, index) => `${item.value}_${index}`}
-              ListEmptyComponent={
-                <Text style={styles.emptyOptionsText}>No se encontraron opciones</Text>
-              }
-              renderItem={({ item }) => (
-                <TouchableOpacity 
-                  style={[
-                    styles.modalOption,
-                    item.value === value && styles.modalOptionSelected
-                  ]}
-                  onPress={() => { 
-                    onSelect(item.value); 
-                    setModalVisible(false);
-                    setBusqueda('');
-                  }}
-                >
-                  <Text style={[
-                    styles.modalOptionText,
-                    item.value === value && styles.modalOptionTextSelected
-                  ]}>
-                    {item.label}
-                  </Text>
-                  {item.value === value && (
-                    <MaterialIcons name="check" size={18} color="#154212" />
-                  )}
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </TouchableOpacity>
-      </Modal>
-    </View>
-  );
-};
-
-export default function AnimalForm({ onClose, onSuccess }: AnimalFormProps) {
+export default function AnimalForm({ onClose, onSuccess, initialData }: AnimalFormProps) {
+  const { activeFinca } = useActiveFinca();
   const [loading, setLoading] = useState(false);
-  const [fincasList, setFincasList] = useState<{label: string, value: string}[]>([]);
+
+  const isEditing = !!initialData;
 
   // Animales de la finca para Genealogía y verificación
   const [animalesFinca, setAnimalesFinca] = useState<any[]>([]);
 
+  // Alerta Customizada
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'warning' as AlertType,
+    onConfirm: () => {},
+  });
+
+  const showAlert = (title: string, message: string, type: AlertType, onConfirm: () => void = () => setAlertConfig(prev => ({ ...prev, visible: false }))) => {
+    setAlertConfig({ visible: true, title, message, type, onConfirm });
+  };
+
   // Estados del formulario alineados con la base de datos
-  const [fincaId, setFincaId] = useState('');
-  const [codigo, setCodigo] = useState('');
-  const [nombre, setNombre] = useState('');
-  const [especie, setEspecie] = useState('');
-  const [raza, setRaza] = useState('');
-  const [genero, setGenero] = useState('');
-  const [proposito, setProposito] = useState('');
-  const [estado, setEstado] = useState('Activo');
-  const [madreId, setMadreId] = useState('');
-  const [padreId, setPadreId] = useState('');
-  const [notas, setNotas] = useState('');
+  const [fincaId, setFincaId] = useState(initialData?.finca_id || '');
+  const [codigo, setCodigo] = useState(initialData?.codigo_animal || '');
+  const [nombre, setNombre] = useState(initialData?.nombre || '');
+  const [especie, setEspecie] = useState(initialData?.especie || '');
+  const [raza, setRaza] = useState(initialData?.raza || '');
+  const [genero, setGenero] = useState(initialData?.genero || '');
+  const [proposito, setProposito] = useState(initialData?.proposito || '');
+  const [estado, setEstado] = useState(initialData?.estado || 'Activo');
+  const [madreId, setMadreId] = useState(initialData?.madre_id || '');
+  const [padreId, setPadreId] = useState(initialData?.padre_id || '');
+  const [notas, setNotas] = useState(initialData?.notas || '');
 
   // Validación y autollenado de código
   const [codigoError, setCodigoError] = useState('');
   const [generandoCodigo, setGenerandoCodigo] = useState(false);
 
   // Foto
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageUri, setImageUri] = useState<string | null>(initialData?.fotografia_url || null);
 
   // Fecha de nacimiento y Calendario
-  const [fechaNacimiento, setFechaNacimiento] = useState<Date | null>(null);
+  const [fechaNacimiento, setFechaNacimiento] = useState<Date | null>(
+    initialData?.fecha_nacimiento ? new Date(initialData.fecha_nacimiento) : null
+  );
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // 1. Cargar las fincas del usuario
+  // Ya no necesitamos fincasList ni fetchFincas porque usamos el contexto
   useEffect(() => {
-    const fetchFincas = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data } = await supabase
-        .from('miembros_finca')
-        .select(`finca_id, fincas ( nombre )`)
-        .eq('user_id', user.id);
-
-      if (data) {
-        const opcionesFincas = data.map((item: any) => ({
-          value: item.finca_id,
-          label: Array.isArray(item.fincas) ? item.fincas[0]?.nombre : item.fincas?.nombre || 'Finca sin nombre'
-        }));
-        
-        setFincasList(opcionesFincas);
-        if (opcionesFincas.length > 0) {
-          setFincaId(opcionesFincas[0].value);
-        }
-      }
-    };
-    fetchFincas();
-  }, []);
+    if (activeFinca) {
+      setFincaId(activeFinca.id);
+    }
+  }, [activeFinca]);
 
   // 2. Cargar los animales de la finca activa (para Genealogía)
   useEffect(() => {
@@ -270,12 +174,17 @@ export default function AnimalForm({ onClose, onSuccess }: AnimalFormProps) {
     }
 
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('animales')
         .select('id')
         .eq('finca_id', fincaId)
-        .ilike('codigo_animal', limpio)
-        .maybeSingle();
+        .ilike('codigo_animal', limpio);
+
+      if (isEditing && initialData?.id) {
+        query = query.neq('id', initialData.id);
+      }
+
+      const { data, error } = await query.maybeSingle();
 
       if (error && error.code !== 'PGRST116') throw error;
 
@@ -405,7 +314,7 @@ export default function AnimalForm({ onClose, onSuccess }: AnimalFormProps) {
   // Guardar en Supabase
   const handleSave = async () => {
     if (!fincaId || !codigo.trim() || !especie || !raza.trim() || !genero || !proposito) {
-      Alert.alert('Campos Obligatorios', 'Por favor complete todos los campos marcados con *');
+      showAlert('Campos Obligatorios', 'Por favor complete todos los campos marcados con *', 'warning');
       return;
     }
 
@@ -415,9 +324,10 @@ export default function AnimalForm({ onClose, onSuccess }: AnimalFormProps) {
       // Validar unicidad de código
       const esUnico = await validarCodigoUnico(codigo);
       if (!esUnico) {
-        Alert.alert(
+        showAlert(
           'Código ya existe', 
-          `El código "${codigo.trim()}" ya está registrado en esta finca. Por favor modifíquelo por uno único.`
+          `El código "${codigo.trim()}" ya está registrado en esta finca. Por favor modifíquelo por uno único.`,
+          'error'
         );
         setLoading(false);
         return;
@@ -426,44 +336,70 @@ export default function AnimalForm({ onClose, onSuccess }: AnimalFormProps) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No hay usuario autenticado');
 
-      // 1. Subir fotografía si existe
+      // 1. Subir fotografía si existe y es nueva
       let fotoUrl = null;
       if (imageUri) {
-        fotoUrl = await uploadPhoto(imageUri, codigo.trim());
+        if (imageUri.startsWith('http')) {
+          fotoUrl = imageUri; // Ya es una URL de Supabase
+        } else {
+          fotoUrl = await uploadPhoto(imageUri, codigo.trim());
+        }
       }
 
       // 2. Preparar fecha
       const fechaFormateada = fechaNacimiento ? formatLocalDate(fechaNacimiento) : null;
 
-      // 3. Insertar animal en Supabase
-      const { error: insertError } = await supabase
-        .from('animales')
-        .insert({
-          finca_id: fincaId,
-          registrado_por: user.id,
-          codigo_animal: codigo.trim(),
-          nombre: nombre.trim() || null,
-          especie: especie,
-          raza: raza.trim(),
-          genero: genero,
-          fecha_nacimiento: fechaFormateada,
-          proposito: proposito,
-          estado: estado,
-          fotografia_url: fotoUrl,
-          notas: notas.trim() || null,
-          madre_id: madreId ? madreId : null,
-          padre_id: padreId ? padreId : null,
-        });
+      // 3. Insertar o Actualizar animal en Supabase
+      const payload = {
+        finca_id: fincaId,
+        registrado_por: user.id,
+        codigo_animal: codigo.trim(),
+        nombre: nombre.trim() || null,
+        especie: especie,
+        raza: raza.trim(),
+        genero: genero,
+        fecha_nacimiento: fechaFormateada,
+        proposito: proposito,
+        estado: estado,
+        madre_id: madreId || null,
+        padre_id: padreId || null,
+        notas: notas.trim() || null
+      };
 
-      if (insertError) throw insertError;
+      if (fotoUrl) {
+        // @ts-ignore
+        payload.fotografia_url = fotoUrl;
+      }
 
-      Alert.alert('¡Éxito!', `El animal "${codigo.trim()}" ha sido registrado correctamente.`);
-      onSuccess();
-      onClose();
+      let error;
+      if (isEditing && initialData?.id) {
+        const { error: updateError } = await supabase
+          .from('animales')
+          .update(payload)
+          .eq('id', initialData.id);
+        error = updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from('animales')
+          .insert(payload);
+        error = insertError;
+      }
 
+      if (error) throw error;
+
+      showAlert(
+        '¡Éxito!', 
+        isEditing ? 'Animal actualizado correctamente.' : 'Animal registrado correctamente.', 
+        'success',
+        () => {
+          setAlertConfig(prev => ({ ...prev, visible: false }));
+          onSuccess();
+          onClose();
+        }
+      );
     } catch (error: any) {
       console.error(error);
-      Alert.alert('Error al registrar', error.message || 'Ocurrió un problema al guardar el animal');
+      showAlert('Error al registrar', error.message || 'Ocurrió un problema al guardar el animal', 'error');
     } finally {
       setLoading(false);
     }
@@ -476,29 +412,12 @@ export default function AnimalForm({ onClose, onSuccess }: AnimalFormProps) {
         <TouchableOpacity onPress={onClose} style={styles.iconButton}>
           <MaterialIcons name="arrow-back" size={24} color="#42493e" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Registrar Animal</Text>
+        <Text style={styles.headerTitle}>{isEditing ? 'Editar Animal' : 'Registrar Animal'}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         
-        {/* Selector de Finca */}
-        <View style={styles.sectionCard}>
-          <SelectInput 
-            label="¿A qué finca pertenece? *" 
-            value={fincaId} 
-            options={fincasList} 
-            onSelect={(val) => {
-              setFincaId(val);
-              if (especie) {
-                const esp = ESPECIES.find(e => e.value === especie);
-                autoGenerarCodigo(val, esp?.prefix || 'AN');
-              }
-            }} 
-            placeholder="Cargando fincas..." 
-          />
-        </View>
-
         {/* Identificación */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
@@ -783,15 +702,21 @@ export default function AnimalForm({ onClose, onSuccess }: AnimalFormProps) {
         
         <TouchableOpacity style={styles.btnSave} onPress={handleSave} disabled={loading}>
           {loading ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator color="#fff" size="small" />
           ) : (
-            <>
-              <MaterialIcons name="save" size={18} color="#fff" />
-              <Text style={styles.btnSaveText}>Guardar Animal</Text>
-            </>
+            <Text style={styles.btnSaveText}>{isEditing ? 'Guardar Cambios' : 'Registrar Animal'}</Text>
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Alerta Personalizada */}
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onConfirm={alertConfig.onConfirm}
+      />
     </KeyboardAvoidingView>
   );
 }

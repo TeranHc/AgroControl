@@ -24,17 +24,13 @@ export default function TabLayout() {
         // Aplicamos los colores de tu diseño
         tabBarActiveTintColor: '#154212', // Verde oscuro principal
         tabBarInactiveTintColor: '#5b5f5c', // Gris secundario
-        headerShown: useClientOnlyValue(false, true),
+        headerShown: false,
         tabBarStyle: {
           backgroundColor: '#ffffff',
           borderTopColor: '#e3e3de',
           paddingBottom: 5,
           height: 60,
         },
-        headerStyle: {
-          backgroundColor: '#154212',
-        },
-        headerTintColor: '#fff',
       }}
     >
       {/* 1. 🏠 Inicio */}
@@ -43,21 +39,6 @@ export default function TabLayout() {
         options={{
           title: "Inicio",
           tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
-          // Botón superior derecho que nos llevará a la sección de Perfil
-          headerRight: () => (
-            <Link href="/perfil" asChild>
-              <Pressable>
-                {({ pressed }) => (
-                  <MaterialIcons
-                    name="person"
-                    size={25}
-                    color="#ffffff"
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
         }}
       />
       
