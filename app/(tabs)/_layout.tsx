@@ -14,9 +14,27 @@ function TabBarIcon(props: {
 }) {
   return <MaterialIcons size={28} style={{ marginBottom: -3 }} {...props} />;
 }
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useActiveFinca } from "../../contexts/ActiveFincaContext";
+import SetupFinca from "../../components/SetupFinca";
+import { View, ActivityIndicator } from "react-native";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
+  const { activeFinca, loadingFincas } = useActiveFinca();
+
+  if (loadingFincas) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f1f0ea" }}>
+        <ActivityIndicator size="large" color="#154212" />
+      </View>
+    );
+  }
+
+  if (!activeFinca) {
+    return <SetupFinca />;
+  }
 
   return (
     <Tabs
@@ -28,8 +46,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#ffffff',
           borderTopColor: '#e3e3de',
-          paddingBottom: 5,
-          height: 60,
+          paddingBottom: Math.max(insets.bottom, 5),
+          height: 60 + Math.max(insets.bottom, 0),
         },
       }}
     >

@@ -17,9 +17,11 @@ import {
   Ionicons,
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { supabase } from '../../lib/supabase'; // Tu conexión a Supabase
 
 export default function LoginScreen() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -28,6 +30,10 @@ export default function LoginScreen() {
 
   // Función para INICIAR SESIÓN
   async function signInWithEmail() {
+    if (!email.trim() || !password) {
+      Alert.alert('Error', 'Por favor ingresa un correo y contraseña.');
+      return;
+    }
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
@@ -37,27 +43,6 @@ export default function LoginScreen() {
     if (error) {
       Alert.alert('Error al iniciar sesión', error.message);
     } 
-    setLoading(false);
-  }
-
-  // Función para REGISTRARSE
-  async function signUpWithEmail() {
-    setLoading(true);
-    const {
-      data: { session },
-      error,
-    } = await supabase.auth.signUp({
-      email: email.trim(),
-      password: password,
-    });
-
-    if (error) {
-      Alert.alert('Error en el registro', error.message);
-    } else if (!session) {
-      Alert.alert('Revisa tu bandeja', 'Te hemos enviado un correo para verificar tu cuenta.');
-    } else {
-      Alert.alert('¡Registro Exitoso!', 'Bienvenido a AgroControl. Ya puedes Iniciar Sesión.');
-    }
     setLoading(false);
   }
 
@@ -172,15 +157,12 @@ export default function LoginScreen() {
 
             {/* Footer */}
             <View style={styles.footer}>
-              <Text style={styles.footerText}>
-                ¿No tienes una cuenta?{" "}
-                <Text
-                  style={styles.footerLink}
-                  onPress={signUpWithEmail}
-                >
-                  Regístrate aquí
-                </Text>
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.footerText}>¿No tienes una cuenta? </Text>
+                <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
+                  <Text style={styles.footerLink}>Regístrate aquí</Text>
+                </TouchableOpacity>
+              </View>
             </View>
             
           </View>

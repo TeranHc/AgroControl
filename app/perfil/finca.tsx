@@ -132,8 +132,8 @@ export default function FincaScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
-          <MaterialIcons name="arrow-back" size={24} color="#42493e" />
+        <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/perfil')} style={styles.iconButton}>
+          <MaterialIcons name="arrow-back" size={24} color="#154212" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Gestión de Finca</Text>
         <View style={{ width: 40 }} />

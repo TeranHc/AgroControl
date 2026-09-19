@@ -7,6 +7,7 @@ import {
   ScrollView,
   Alert,
   Switch,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -18,28 +19,45 @@ export default function ConfiguracionScreen() {
   const [notificaciones, setNotificaciones] = React.useState(true);
 
   const handleCerrarSesion = () => {
-    Alert.alert(
-      'Cerrar Sesión',
-      '¿Estás seguro de que deseas salir de tu cuenta?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Cerrar Sesión',
-          style: 'destructive',
-          onPress: async () => {
-            await supabase.auth.signOut();
-            router.replace('/(auth)/login');
+    const doLogout = () => {
+      // Navegamos al login PRIMERO para evitar conflictos con el Layout de (tabs)
+      router.replace('/(auth)/login');
+      
+      // Y luego de un momento, cerramos la sesión en el servidor
+      setTimeout(async () => {
+        try {
+          await supabase.auth.signOut();
+        } catch (error) {
+          console.error('Error cerrando sesión:', error);
+        }
+      }, 300);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('¿Estás seguro de que deseas salir de tu cuenta?')) {
+        doLogout();
+      }
+    } else {
+      Alert.alert(
+        'Cerrar Sesión',
+        '¿Estás seguro de que deseas salir de tu cuenta?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Cerrar Sesión',
+            style: 'destructive',
+            onPress: doLogout,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.headerBtn} onPress={() => router.canGoBack() ? router.back() : router.replace('/perfil')}>
           <MaterialIcons name="arrow-back" size={24} color="#154212" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Configuración</Text>

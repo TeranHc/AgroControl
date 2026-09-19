@@ -326,21 +326,38 @@ export default function PerfilScreen() {
 
   // Cerrar Sesión
   const handleCerrarSesion = () => {
-    Alert.alert(
-      'Cerrar Sesión',
-      '¿Deseas cerrar tu sesión actual de AgroControl?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Cerrar Sesión',
-          style: 'destructive',
-          onPress: async () => {
-            await supabase.auth.signOut();
-            router.replace('/(auth)/login');
+    const doLogout = () => {
+      // Navegamos al login PRIMERO para evitar conflictos con el Layout de (tabs)
+      router.replace('/(auth)/login');
+      
+      // Y luego de un momento, cerramos la sesión en el servidor
+      setTimeout(async () => {
+        try {
+          await supabase.auth.signOut();
+        } catch (error) {
+          console.error('Error cerrando sesión:', error);
+        }
+      }, 300);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('¿Deseas cerrar tu sesión actual de AgroControl?')) {
+        doLogout();
+      }
+    } else {
+      Alert.alert(
+        'Cerrar Sesión',
+        '¿Deseas cerrar tu sesión actual de AgroControl?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Cerrar Sesión',
+            style: 'destructive',
+            onPress: doLogout,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   // Función para obtener estilos según el rol
@@ -371,7 +388,7 @@ export default function PerfilScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Top Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.headerBtn} onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')}>
           <MaterialIcons name="arrow-back" size={24} color="#154212" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Mi Perfil y Finca</Text>

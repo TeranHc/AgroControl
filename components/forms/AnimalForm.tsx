@@ -73,6 +73,7 @@ export default function AnimalForm({ onClose, onSuccess, initialData }: AnimalFo
 
   // Foto
   const [imageUri, setImageUri] = useState<string | null>(initialData?.fotografia_url || null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
 
   // Fecha de nacimiento y Calendario
   const [fechaNacimiento, setFechaNacimiento] = useState<Date | null>(
@@ -243,14 +244,16 @@ export default function AnimalForm({ onClose, onSuccess, initialData }: AnimalFo
   // Galería de fotos
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.6,
+      base64: true,
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
       setImageUri(result.assets[0].uri);
+      setImageBase64(result.assets[0].base64 || null);
     }
   };
 
@@ -276,7 +279,9 @@ export default function AnimalForm({ onClose, onSuccess, initialData }: AnimalFo
   const uploadPhoto = async (uri: string, codigoAnimal: string) => {
     try {
       let base64: string;
-      if (Platform.OS === 'web') {
+      if (imageBase64) {
+        base64 = imageBase64;
+      } else if (Platform.OS === 'web') {
         const response = await fetch(uri);
         const blob = await response.blob();
         const reader = new FileReader();

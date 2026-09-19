@@ -92,7 +92,7 @@ export default function PersonalScreen() {
       if (error) throw error;
 
       Alert.alert('¡Éxito!', 'Tus datos han sido actualizados correctamente.', [
-        { text: 'Aceptar', onPress: () => router.back() },
+        { text: 'Aceptar', onPress: () => router.canGoBack() ? router.back() : router.replace('/perfil') },
       ]);
     } catch (err: any) {
       console.error('Error guardando datos:', err);
@@ -114,7 +114,7 @@ export default function PersonalScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.headerBtn} onPress={() => router.canGoBack() ? router.back() : router.replace('/perfil')}>
           <MaterialIcons name="arrow-back" size={24} color="#154212" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Editar Datos Personales</Text>
@@ -179,7 +179,7 @@ export default function PersonalScreen() {
           <View style={styles.actionsRow}>
             <TouchableOpacity 
               style={styles.btnCancel} 
-              onPress={() => router.back()}
+              onPress={() => router.canGoBack() ? router.back() : router.replace('/perfil')}
               disabled={guardando}
             >
               <Text style={styles.btnCancelText}>Cancelar</Text>
