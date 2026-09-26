@@ -86,7 +86,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <Header title="Inicio" />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -194,7 +194,7 @@ export default function HomeScreen() {
           onSuccess={() => { setModalPesajeVisible(false); fetchDashboardData(); }} 
         />
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 

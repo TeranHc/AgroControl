@@ -20,6 +20,7 @@ export default function ReproduccionForm({ onClose, onSuccess, initialAnimalId, 
   const [loading, setLoading] = useState(false);
   const [hembras, setHembras] = useState<{ label: string; value: string }[]>([]);
   const [machos, setMachos] = useState<{ label: string; value: string }[]>([]);
+  const [isInitialMacho, setIsInitialMacho] = useState(false);
 
   // Estados del formulario
   const [animalId, setAnimalId] = useState(initialData?.animal_id || initialAnimalId || ''); // La hembra
@@ -73,6 +74,16 @@ export default function ReproduccionForm({ onClose, onSuccess, initialAnimalId, 
           
           setHembras(hembrasFiltered);
           setMachos([{ label: 'Desconocido / Inseminación Externa', value: '' }, ...machosFiltered]);
+
+          // Si venimos del perfil de un animal y resulta ser Macho, lo asignamos al campo correcto
+          if (!initialData && initialAnimalId) {
+            const isMacho = machosFiltered.some(m => m.value === initialAnimalId);
+            if (isMacho) {
+              setMachoId(initialAnimalId);
+              setAnimalId(''); // Limpiamos la hembra
+              setIsInitialMacho(true);
+            }
+          }
         }
       } catch (err) {
         console.error('Error cargando animales:', err);
@@ -159,16 +170,30 @@ export default function ReproduccionForm({ onClose, onSuccess, initialAnimalId, 
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.sectionCard}>
-          <SelectInput
-            label="Hembra *"
-            value={animalId}
-            options={hembras}
-            onSelect={setAnimalId}
-            placeholder={hembras.length > 0 ? "Seleccionar hembra..." : "Cargando hembras..."}
-            disabled={!!initialAnimalId}
-          />
-        </View>
+        {/* Renderizado condicional del primer campo según el contexto (Macho o Hembra) */}
+        {isInitialMacho ? (
+          <View style={styles.sectionCard}>
+            <SelectInput
+              label="Macho (Padre / Servicio) *"
+              value={machoId}
+              options={machos}
+              onSelect={setMachoId}
+              placeholder="Cargando machos..."
+              disabled={true} // Bloqueado porque venimos del perfil de este macho
+            />
+          </View>
+        ) : (
+          <View style={styles.sectionCard}>
+            <SelectInput
+              label="Hembra *"
+              value={animalId}
+              options={hembras}
+              onSelect={setAnimalId}
+              placeholder={hembras.length > 0 ? "Seleccionar hembra..." : "Cargando hembras..."}
+              disabled={!!initialAnimalId && !isEditing} // Bloqueado si venimos del perfil de esta hembra
+            />
+          </View>
+        )}
 
         <View style={styles.sectionCard}>
           <SelectInput
@@ -213,7 +238,8 @@ export default function ReproduccionForm({ onClose, onSuccess, initialAnimalId, 
                   mode="date"
                   display="default"
                   maximumDate={new Date()}
-                  onChange={(e, date) => { setShowDatePickerEvento(false); if (date) setFechaEvento(date); }}
+                  onValueChange={(e, date) => { setShowDatePickerEvento(Platform.OS === 'ios'); if (date) setFechaEvento(date); }}
+                  onDismiss={() => setShowDatePickerEvento(false)}
                   style={{ alignSelf: 'flex-start', marginTop: 8 }}
                 />
               ) : (
@@ -227,7 +253,8 @@ export default function ReproduccionForm({ onClose, onSuccess, initialAnimalId, 
                       mode="date"
                       display="default"
                       maximumDate={new Date()}
-                      onChange={(e, date) => { setShowDatePickerEvento(false); if (date) setFechaEvento(date); }}
+                      onValueChange={(e, date) => { setShowDatePickerEvento(Platform.OS === 'ios'); if (date) setFechaEvento(date); }}
+                      onDismiss={() => setShowDatePickerEvento(false)}
                     />
                   )}
                 </>
@@ -251,15 +278,28 @@ export default function ReproduccionForm({ onClose, onSuccess, initialAnimalId, 
           </View>
         </View>
 
-        <View style={styles.sectionCard}>
-          <SelectInput
-            label="Macho (Servicio / Padre)"
-            value={machoId}
-            options={machos}
-            onSelect={setMachoId}
-            placeholder="Seleccionar macho si aplica..."
-          />
-        </View>
+        {/* Renderizado condicional del segundo campo según el contexto */}
+        {isInitialMacho ? (
+          <View style={styles.sectionCard}>
+            <SelectInput
+              label="Hembra (Con la que se reprodujo) *"
+              value={animalId}
+              options={hembras}
+              onSelect={setAnimalId}
+              placeholder="Seleccionar hembra..."
+            />
+          </View>
+        ) : (
+          <View style={styles.sectionCard}>
+            <SelectInput
+              label="Macho (Servicio / Padre)"
+              value={machoId}
+              options={machos}
+              onSelect={setMachoId}
+              placeholder="Seleccionar macho si aplica..."
+            />
+          </View>
+        )}
 
         <View style={styles.sectionCard}>
           <View style={styles.row}>
@@ -288,7 +328,8 @@ export default function ReproduccionForm({ onClose, onSuccess, initialAnimalId, 
                   value={fechaProbableParto || new Date()}
                   mode="date"
                   display="default"
-                  onChange={(e, date) => { setShowDatePickerParto(false); if (date) setFechaProbableParto(date); }}
+                  onValueChange={(e, date) => { setShowDatePickerParto(Platform.OS === 'ios'); if (date) setFechaProbableParto(date); }}
+                  onDismiss={() => setShowDatePickerParto(false)}
                   style={{ alignSelf: 'flex-start', marginTop: 8 }}
                 />
               ) : (
@@ -303,7 +344,8 @@ export default function ReproduccionForm({ onClose, onSuccess, initialAnimalId, 
                       value={fechaProbableParto || new Date()}
                       mode="date"
                       display="default"
-                      onChange={(e, date) => { setShowDatePickerParto(false); if (date) setFechaProbableParto(date); }}
+                      onValueChange={(e, date) => { setShowDatePickerParto(Platform.OS === 'ios'); if (date) setFechaProbableParto(date); }}
+                      onDismiss={() => setShowDatePickerParto(false)}
                     />
                   )}
                 </>

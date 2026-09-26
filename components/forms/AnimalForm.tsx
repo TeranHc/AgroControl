@@ -258,12 +258,18 @@ export default function AnimalForm({ onClose, onSuccess, initialData }: AnimalFo
   };
 
   // Manejo de Calendario
-  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+  const handleDateChange = (event: any, selectedDate?: Date) => {
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
     }
     if (selectedDate) {
       setFechaNacimiento(selectedDate);
+    }
+  };
+
+  const handleDismissDate = () => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
     }
   };
 
@@ -443,6 +449,27 @@ export default function AnimalForm({ onClose, onSuccess, initialData }: AnimalFo
             )}
           </TouchableOpacity>
 
+          {/* Especie y Raza (Movidos a Identificación) */}
+          <View style={styles.row}>
+            <SelectInput 
+              label="Especie *" 
+              value={especie} 
+              onSelect={handleSelectEspecie} 
+              placeholder="Seleccione..."
+              options={ESPECIES} 
+            />
+            <View style={{ width: 14 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Raza *</Text>
+              <TextInput 
+                style={styles.input} 
+                placeholder="Ej: Holstein, Angus..." 
+                value={raza} 
+                onChangeText={setRaza} 
+              />
+            </View>
+          </View>
+
           {/* Código del animal con indicador de autollenado */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={styles.label}>Código del Animal *</Text>
@@ -489,27 +516,6 @@ export default function AnimalForm({ onClose, onSuccess, initialData }: AnimalFo
           <View style={styles.sectionTitleRow}>
             <MaterialIcons name="pets" size={20} color="#154212" />
             <Text style={styles.sectionTitle}>Características</Text>
-          </View>
-
-          {/* Especie y Raza */}
-          <View style={styles.row}>
-            <SelectInput 
-              label="Especie *" 
-              value={especie} 
-              onSelect={handleSelectEspecie} 
-              placeholder="Seleccione..."
-              options={ESPECIES} 
-            />
-            <View style={{ width: 14 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Raza *</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="Ej: Holstein, Angus..." 
-                value={raza} 
-                onChangeText={setRaza} 
-              />
-            </View>
           </View>
 
           {/* Género y Fecha de Nacimiento (Calendario) */}
@@ -596,7 +602,8 @@ export default function AnimalForm({ onClose, onSuccess, initialData }: AnimalFo
                             mode="date"
                             display="inline"
                             maximumDate={new Date()}
-                            onChange={handleDateChange}
+                            onValueChange={handleDateChange}
+                            onDismiss={handleDismissDate}
                           />
                         </View>
                       </TouchableOpacity>
@@ -610,7 +617,8 @@ export default function AnimalForm({ onClose, onSuccess, initialData }: AnimalFo
                       mode="date"
                       display="default"
                       maximumDate={new Date()}
-                      onChange={handleDateChange}
+                      onValueChange={handleDateChange}
+                      onDismiss={handleDismissDate}
                     />
                   )}
                 </>

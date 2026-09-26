@@ -143,7 +143,7 @@ export default function PesajesScreen() {
     return cumpleBusqueda && cumpleEspecie;
   });
 
-  const especiesDisponibles = ['General', ...Array.from(new Set(pesajes.map(p => p.animales?.especie).filter(Boolean)))];
+  const especiesDisponibles = ['General', ...Array.from(new Set(pesajes.map(p => p.animales?.especie).filter(Boolean) as string[]))];
 
   // Computar estadísticas a partir de pesajesFiltrados
   let stats = { recientes: 0, esteMes: 0, promedio: 0, ultimoDias: 'Sin datos' };
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     color: '#1a1c19',
-    outlineStyle: 'none',
+    outlineStyle: 'none' as any,
   },
   filterScroll: {
     marginBottom: 5,

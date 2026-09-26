@@ -793,7 +793,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     color: '#1a1c19',
-    outlineStyle: 'none',
+    outlineStyle: 'none' as any,
   },
   filterScroll: {
     marginBottom: 15,

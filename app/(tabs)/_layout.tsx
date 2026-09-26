@@ -10,7 +10,7 @@ import Colors from "@/constants/Colors";
 // Usamos MaterialIcons que tiene mejores opciones para el sector ganadero/médico
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof MaterialIcons>["name"];
-  color: string;
+  color: string | any;
 }) {
   return <MaterialIcons size={28} style={{ marginBottom: -3 }} {...props} />;
 }

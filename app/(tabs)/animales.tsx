@@ -238,7 +238,7 @@ export default function AnimalesScreen() {
           data={animalesFiltrados}
           keyExtractor={(item) => item.id}
           renderItem={renderAnimalCard}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={styles.cardList}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#154212" />
           }
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     color: "#1a1c19",
-    outlineStyle: 'none',
+    outlineStyle: 'none' as any,
   },
   cardList: {
     padding: 20,

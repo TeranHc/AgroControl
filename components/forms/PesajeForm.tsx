@@ -72,11 +72,15 @@ export default function PesajeForm({ onClose, onSuccess, initialAnimalId, initia
     return `${year}-${month}-${day}`;
   };
 
-  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+  const handleDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
     if (selectedDate) {
       setFechaPesaje(selectedDate);
     }
+  };
+
+  const handleDismissDate = () => {
+    setShowDatePicker(false);
   };
 
   const handleSave = async () => {
@@ -202,7 +206,8 @@ export default function PesajeForm({ onClose, onSuccess, initialAnimalId, initia
                   mode="date"
                   display="default"
                   maximumDate={new Date()}
-                  onChange={handleDateChange}
+                  onValueChange={handleDateChange}
+                  onDismiss={handleDismissDate}
                   style={{ alignSelf: 'flex-start', marginTop: 8 }}
                 />
               ) : (
@@ -222,7 +227,8 @@ export default function PesajeForm({ onClose, onSuccess, initialAnimalId, initia
                       mode="date"
                       display="default"
                       maximumDate={new Date()}
-                      onChange={handleDateChange}
+                      onValueChange={handleDateChange}
+                      onDismiss={handleDismissDate}
                     />
                   )}
                 </>

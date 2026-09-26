@@ -231,7 +231,8 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
                   mode="date"
                   display="default"
                   maximumDate={new Date()}
-                  onChange={(e, date) => { setShowDatePickerApp(false); if (date) setFechaAplicacion(date); }}
+                  onValueChange={(e, date) => { setShowDatePickerApp(Platform.OS === 'ios'); if (date) setFechaAplicacion(date); }}
+                  onDismiss={() => setShowDatePickerApp(false)}
                   style={{ alignSelf: 'flex-start', marginTop: 8 }}
                 />
               ) : (
@@ -245,7 +246,8 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
                       mode="date"
                       display="default"
                       maximumDate={new Date()}
-                      onChange={(e, date) => { setShowDatePickerApp(false); if (date) setFechaAplicacion(date); }}
+                      onValueChange={(e, date) => { setShowDatePickerApp(Platform.OS === 'ios'); if (date) setFechaAplicacion(date); }}
+                      onDismiss={() => setShowDatePickerApp(false)}
                     />
                   )}
                 </>
@@ -277,7 +279,8 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
                   value={proximaDosis || new Date()}
                   mode="date"
                   display="default"
-                  onChange={(e, date) => { setShowDatePickerProx(false); if (date) setProximaDosis(date); }}
+                  onValueChange={(e, date) => { setShowDatePickerProx(Platform.OS === 'ios'); if (date) setProximaDosis(date); }}
+                  onDismiss={() => setShowDatePickerProx(false)}
                   style={{ alignSelf: 'flex-start', marginTop: 8 }}
                 />
               ) : (
@@ -292,7 +295,8 @@ export default function SaludForm({ onClose, onSuccess, initialAnimalId, initial
                       value={proximaDosis || new Date()}
                       mode="date"
                       display="default"
-                      onChange={(e, date) => { setShowDatePickerProx(false); if (date) setProximaDosis(date); }}
+                      onValueChange={(e, date) => { setShowDatePickerProx(Platform.OS === 'ios'); if (date) setProximaDosis(date); }}
+                      onDismiss={() => setShowDatePickerProx(false)}
                     />
                   )}
                 </>
