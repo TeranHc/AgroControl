@@ -11,6 +11,8 @@ import {
   View,
   ActivityIndicator,
 } from "react-native";
+import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   FontAwesome5,
@@ -19,6 +21,8 @@ import {
 } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { supabase } from '../../lib/supabase'; // Tu conexión a Supabase
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -42,8 +46,8 @@ export default function LoginScreen() {
 
     if (error) {
       Alert.alert('Error al iniciar sesión', error.message);
+      setLoading(false);
     } 
-    setLoading(false);
   }
 
   return (
@@ -139,19 +143,85 @@ export default function LoginScreen() {
               {loading ? (
                 <ActivityIndicator size="large" color="#1b4d1b" style={{ marginTop: 10, marginBottom: 10 }} />
               ) : (
-                <TouchableOpacity
-                  style={styles.button}
-                  onPress={signInWithEmail}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.buttonText}>Iniciar Sesión</Text>
-                  <Ionicons
-                    name="arrow-forward"
-                    size={18}
-                    color="#fff"
-                    style={styles.buttonIcon}
-                  />
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    style={styles.button}
+                    onPress={signInWithEmail}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.buttonText}>Iniciar Sesión</Text>
+                    <Ionicons
+                      name="arrow-forward"
+                      size={18}
+                      color="#fff"
+                      style={styles.buttonIcon}
+                    />
+                  </TouchableOpacity>
+
+                  {/* Botón de Google */}
+                  <TouchableOpacity
+                    style={[styles.button, styles.googleButton]}
+                    onPress={async () => {
+                      // Usar Linking.createURL para que en celular regrese a la app
+                      const redirectUrl = Platform.OS === 'web' 
+                        ? window.location.origin 
+                        : Linking.createURL('/(auth)/login');
+
+                      if (Platform.OS === 'web') {
+                        const { error } = await supabase.auth.signInWithOAuth({
+                          provider: 'google',
+                          options: {
+                            redirectTo: redirectUrl,
+                            queryParams: {
+                              prompt: 'select_account',
+                            },
+                          },
+                        });
+                        if (error) Alert.alert('Error', error.message);
+                      } else {
+                        // Flujo Nativo en Celular usando WebBrowser
+                        const { data, error } = await supabase.auth.signInWithOAuth({
+                          provider: 'google',
+                          options: {
+                            redirectTo: redirectUrl,
+                            skipBrowserRedirect: true, // No abrir el navegador por defecto
+                            queryParams: {
+                              prompt: 'select_account',
+                            },
+                          },
+                        });
+                        
+                        if (error) {
+                          Alert.alert('Error', error.message);
+                        } else if (data?.url) {
+                          try {
+                            const res = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+                            
+                            if (res.type === 'success' && res.url) {
+                              const urlStr = res.url.replace('#', '?');
+                              const matchAccess = urlStr.match(/access_token=([^&]+)/);
+                              const matchRefresh = urlStr.match(/refresh_token=([^&]+)/);
+                              if (matchAccess && matchAccess[1] && matchRefresh && matchRefresh[1]) {
+                                await supabase.auth.setSession({
+                                  access_token: matchAccess[1],
+                                  refresh_token: matchRefresh[1],
+                                });
+                              }
+                            }
+                          } catch (err: any) {
+                            console.error('WebBrowser error:', err);
+                          }
+                        }
+                      }
+                      
+                      setLoading(false);
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="logo-google" size={18} color="#4285F4" style={{ marginRight: 8 }} />
+                    <Text style={[styles.buttonText, { color: '#334155' }]}>Continuar con Google</Text>
+                  </TouchableOpacity>
+                </>
               )}
             </View>
 
@@ -296,6 +366,12 @@ const styles = StyleSheet.create({
   },
   buttonIcon: {
     marginLeft: 6,
+  },
+  googleButton: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    marginTop: 12,
   },
   footer: {
     marginTop: 24,

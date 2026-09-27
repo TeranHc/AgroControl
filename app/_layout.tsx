@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { ActiveFincaProvider } from '../contexts/ActiveFincaContext';
@@ -20,26 +21,63 @@ export default function RootLayout() {
       setIsInitialized(true);
     });
 
+    // Procesar Deep Links (OAuth en celular)
+    const handleDeepLink = async (event: { url: string }) => {
+      if (event.url && event.url.includes('access_token')) {
+        try {
+          // Expo envia exp://...#access_token=... -> lo parseamos
+          const urlStr = event.url.replace('#', '?');
+          // En react-native a veces new URL falla con exp://, usamos regex o expo-linking
+          const matchAccess = urlStr.match(/access_token=([^&]+)/);
+          const matchRefresh = urlStr.match(/refresh_token=([^&]+)/);
+          if (matchAccess && matchAccess[1] && matchRefresh && matchRefresh[1]) {
+            await supabase.auth.setSession({
+              access_token: matchAccess[1],
+              refresh_token: matchRefresh[1],
+            });
+          }
+        } catch (e) {
+          console.error('Error parseando deep link', e);
+        }
+      }
+    };
+
+    const urlSub = Linking.addEventListener('url', handleDeepLink);
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink({ url });
+    });
+
     // 2. Escuchar cambios (cuando el usuario inicia sesión o cierra sesión)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      urlSub.remove();
+    };
   }, []);
 
   useEffect(() => {
     if (!isInitialized) return;
 
-    // Comprobamos si estamos intentando entrar a la carpeta (auth)
     const inAuthGroup = segments[0] === '(auth)';
+    const isCompletarPerfil = segments.join('/') === '(auth)/completar-perfil';
 
     if (!session && !inAuthGroup) {
-      // No hay usuario y está intentando entrar a la app -> ¡Al Login!
       router.replace('/(auth)/login');
-    } else if (session && inAuthGroup) {
-      // Hay usuario y está en la pantalla de Login -> ¡A las pestañas!
-      router.replace('/(tabs)');
+    } else if (session) {
+      // Si el usuario acaba de iniciar sesión con Google, puede que le falte el teléfono y nacionalidad
+      const user = session.user;
+      const faltaInfo = !user.user_metadata?.phone || !user.user_metadata?.nacionalidad;
+
+      if (faltaInfo) {
+        if (!isCompletarPerfil) {
+          router.replace('/(auth)/completar-perfil');
+        }
+      } else if (inAuthGroup) {
+        router.replace('/(tabs)');
+      }
     }
   }, [session, isInitialized, segments]);
 

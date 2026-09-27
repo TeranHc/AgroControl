@@ -26,10 +26,21 @@ export default function SetupFinca() {
       // Llamamos a la función segura de la base de datos
       const { data: fincaId, error: rpcError } = await supabase.rpc('crear_finca_y_miembro', {
         nombre_finca: nombre.trim(),
-        nombre_usuario: user.user_metadata?.nombre_completo || 'Propietario / Administrador'
+        nombre_usuario: user.user_metadata?.full_name || user.user_metadata?.nombre_completo || 'Propietario / Administrador'
       });
 
       if (rpcError) throw rpcError;
+
+      // Actualizar el registro del miembro con el teléfono y la nacionalidad si existen
+      if (user.user_metadata?.phone || user.user_metadata?.nacionalidad) {
+        await supabase.from('miembros_finca')
+          .update({
+            telefono: user.user_metadata?.phone || null,
+            nacionalidad: user.user_metadata?.nacionalidad || null
+          })
+          .eq('finca_id', fincaId)
+          .eq('user_id', user.id);
+      }
 
       // 3. Recargar contexto
       await recargarFincas();
