@@ -216,7 +216,11 @@ export default function RegisterScreen() {
 
                 {/* Confirmar Contraseña */}
                 <Text style={styles.label}>Confirmar Contraseña *</Text>
-                <View style={styles.inputContainer}>
+                <View style={[
+                  styles.inputContainer,
+                  confirmPassword !== '' && password !== confirmPassword ? { borderColor: '#ba1a1a', borderWidth: 1 } : null,
+                  password !== '' && confirmPassword !== '' && password === confirmPassword ? { borderColor: '#154212', borderWidth: 1 } : null
+                ]}>
                   <MaterialCommunityIcons name="lock-check-outline" size={20} color="#6b7280" style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
@@ -228,6 +232,16 @@ export default function RegisterScreen() {
                     autoCapitalize="none"
                   />
                 </View>
+                {confirmPassword !== '' && password !== confirmPassword && (
+                  <Text style={{ color: '#ba1a1a', fontSize: 12, marginTop: -12, marginBottom: 12, marginLeft: 4 }}>
+                    Las contraseñas no coinciden
+                  </Text>
+                )}
+                {password !== '' && confirmPassword !== '' && password === confirmPassword && (
+                  <Text style={{ color: '#154212', fontSize: 12, marginTop: -12, marginBottom: 12, marginLeft: 4 }}>
+                    ¡Las contraseñas coinciden!
+                  </Text>
+                )}
 
                 {/* Botón de Submit */}
                 {loading ? (

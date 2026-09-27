@@ -45,7 +45,11 @@ export default function LoginScreen() {
     });
 
     if (error) {
-      Alert.alert('Error al iniciar sesión', error.message);
+      let msg = error.message;
+      if (msg.includes('Invalid login credentials')) {
+        msg = 'El correo o la contraseña son incorrectos. Por favor, verifica tus datos.';
+      }
+      Alert.alert('Error al iniciar sesión', msg);
       setLoading(false);
     } 
   }
@@ -91,7 +95,7 @@ export default function LoginScreen() {
               {/* Input contraseña */}
               <View style={styles.passwordHeader}>
                 <Text style={styles.label}>Contraseña</Text>
-                <TouchableOpacity onPress={() => Alert.alert("Próximamente", "Función de recuperar contraseña")}>
+                <TouchableOpacity onPress={() => router.push('/(auth)/forgot-password')}>
                   <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
                 </TouchableOpacity>
               </View>

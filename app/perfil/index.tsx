@@ -37,7 +37,7 @@ type Finca = {
 
 export default function PerfilScreen() {
   const router = useRouter();
-  const { activeFinca } = useActiveFinca();
+  const { activeFinca, fincas: misFincas, cambiarFinca } = useActiveFinca();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -108,7 +108,8 @@ export default function PerfilScreen() {
             created_at
           )
         `)
-        .eq('id', activeFinca.membresia_id)
+        .eq('finca_id', activeFinca.id)
+        .eq('user_id', user.id)
         .maybeSingle();
 
       if (memError) throw memError;
@@ -197,7 +198,8 @@ export default function PerfilScreen() {
           telefono: editTelefono.trim() || null,
           nacionalidad: editNacionalidad.trim() || null,
         })
-        .eq('id', miMembresia.id);
+        .eq('user_id', userId)
+        .eq('finca_id', activeFinca?.id);
 
       if (error) throw error;
 
@@ -251,39 +253,40 @@ export default function PerfilScreen() {
     }
   };
 
-  // Agregar nuevo miembro a la finca
-  const handleAgregarMiembro = async () => {
-    if (!nuevoNombreMiembro.trim()) {
-      Alert.alert('Campo requerido', 'Por favor ingresa el nombre del nuevo miembro.');
-      return;
-    }
+  const [codigoGenerado, setCodigoGenerado] = useState<string | null>(null);
 
-    if (!finca) return;
+  const handleGenerarCodigo = async () => {
+    if (!finca || !userId) return;
 
     setGuardando(true);
     try {
+      // 1. Generate 6 random alphanumeric chars
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let codigo = '';
+      for (let i = 0; i < 6; i++) {
+        codigo += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      
+      // 2. Set expiration (e.g. 7 días)
+      const expiraEn = new Date();
+      expiraEn.setDate(expiraEn.getDate() + 7);
+
       const { error } = await supabase
-        .from('miembros_finca')
+        .from('codigos_invitacion')
         .insert({
+          codigo,
           finca_id: finca.id,
-          nombre_completo: nuevoNombreMiembro.trim(),
-          telefono: nuevoTelefonoMiembro.trim() || null,
-          nacionalidad: nuevoNacionalidadMiembro.trim() || null,
+          generado_por: userId,
           rol: nuevoRolMiembro,
+          expira_en: expiraEn.toISOString()
         });
 
       if (error) throw error;
 
-      Alert.alert('¡Miembro Agregado!', `Se añadió a ${nuevoNombreMiembro.trim()} como ${nuevoRolMiembro}.`);
-      setModalNuevoMiembroVisible(false);
-      setNuevoNombreMiembro('');
-      setNuevoTelefonoMiembro('');
-      setNuevoNacionalidadMiembro('');
-      setNuevoRolMiembro('Worker');
-      cargarDatosPerfil();
+      setCodigoGenerado(codigo);
     } catch (error: any) {
-      console.error('Error agregando miembro:', error);
-      Alert.alert('Error', error.message || 'No se pudo registrar el miembro.');
+      console.error('Error generando código:', error);
+      Alert.alert('Error', error.message || 'No se pudo generar el código de invitación.');
     } finally {
       setGuardando(false);
     }
@@ -292,36 +295,56 @@ export default function PerfilScreen() {
   // Eliminar miembro del equipo
   const confirmarEliminarMiembro = (miembro: Miembro) => {
     if (miembro.user_id === userId) {
-      Alert.alert('Operación no permitida', 'No puedes eliminarte a ti mismo de la finca.');
+      if (Platform.OS === 'web') {
+        window.alert('No puedes eliminarte a ti mismo de la finca.');
+      } else {
+        Alert.alert('Operación no permitida', 'No puedes eliminarte a ti mismo de la finca.');
+      }
       return;
     }
 
-    Alert.alert(
-      'Eliminar Miembro',
-      `¿Estás seguro de que deseas eliminar a "${miembro.nombre_completo}" del equipo de la finca?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('miembros_finca')
-                .delete()
-                .eq('id', miembro.id);
+    const doDelete = async () => {
+      try {
+        const { error } = await supabase
+          .from('miembros_finca')
+          .delete()
+          .eq('id', miembro.id);
 
-              if (error) throw error;
+        if (error) throw error;
 
-              Alert.alert('Miembro Eliminado', 'El miembro ha sido retirado de la finca.');
-              cargarDatosPerfil();
-            } catch (err: any) {
-              Alert.alert('Error', err.message || 'No se pudo eliminar el miembro.');
-            }
+        if (Platform.OS === 'web') {
+          window.alert('El miembro ha sido retirado de la finca.');
+        } else {
+          Alert.alert('Miembro Eliminado', 'El miembro ha sido retirado de la finca.');
+        }
+        cargarDatosPerfil();
+      } catch (err: any) {
+        if (Platform.OS === 'web') {
+          window.alert(err.message || 'No se pudo eliminar el miembro.');
+        } else {
+          Alert.alert('Error', err.message || 'No se pudo eliminar el miembro.');
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`¿Estás seguro de que deseas eliminar a "${miembro.nombre_completo}" del equipo de la finca?`)) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Eliminar Miembro',
+        `¿Estás seguro de que deseas eliminar a "${miembro.nombre_completo}" del equipo de la finca?`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Eliminar',
+            style: 'destructive',
+            onPress: doDelete,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   // Cerrar Sesión
@@ -491,7 +514,64 @@ export default function PerfilScreen() {
         </View>
 
         {/* ========================================================= */}
-        {/* 2. SECCIÓN: DATOS DE MI FINCA */}
+        {/* 1.5. SECCIÓN: MIS FINCAS (SWITCHER) */}
+        {/* ========================================================= */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.sectionTitleRow}>
+              <MaterialIcons name="list-alt" size={22} color="#154212" />
+              <Text style={styles.cardTitle}>Tus Fincas</Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.btnActionPrimary}
+              onPress={() => router.push('/perfil/setup-finca')}
+            >
+              <MaterialIcons name="add" size={16} color="#fff" />
+              <Text style={styles.btnActionPrimaryText}>NUEVA</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.helperTextSection}>
+            Selecciona la finca que deseas visualizar y gestionar:
+          </Text>
+
+          {misFincas.map((f) => (
+            <TouchableOpacity 
+              key={f.id} 
+              style={[
+                styles.memberCard, 
+                f.id === activeFinca?.id ? { borderColor: '#154212', backgroundColor: '#f2f8f1' } : null
+              ]}
+              onPress={() => {
+                if (f.id !== activeFinca?.id) {
+                  cambiarFinca(f.id);
+                }
+              }}
+            >
+              <View style={[styles.memberAvatar, f.id === activeFinca?.id ? { backgroundColor: '#154212' } : null]}>
+                <MaterialCommunityIcons name="barn" size={20} color={f.id === activeFinca?.id ? '#fff' : '#154212'} />
+              </View>
+
+              <View style={styles.memberInfo}>
+                <Text style={[styles.memberName, f.id === activeFinca?.id ? { color: '#154212' } : null]}>
+                  {f.nombre}
+                </Text>
+                <Text style={styles.memberMeta}>
+                  Rol: {f.rol === 'Admin' ? 'Administrador' : f.rol === 'Worker' ? 'Trabajador' : 'Observador'}
+                </Text>
+              </View>
+
+              {f.id === activeFinca?.id && (
+                <View style={[styles.badgeYou, { backgroundColor: '#154212' }]}>
+                  <Text style={[styles.badgeYouText, { color: '#fff' }]}>ACTUAL</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* ========================================================= */}
+        {/* 2. SECCIÓN: DATOS DE LA FINCA ACTUAL */}
         {/* ========================================================= */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
@@ -788,89 +868,91 @@ export default function PerfilScreen() {
         visible={modalNuevoMiembroVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setModalNuevoMiembroVisible(false)}
+        onRequestClose={() => {
+          setModalNuevoMiembroVisible(false);
+          setCodigoGenerado(null);
+        }}
       >
         <TouchableOpacity 
           style={styles.modalOverlay} 
           activeOpacity={1} 
-          onPress={() => setModalNuevoMiembroVisible(false)}
+          onPress={() => {
+            setModalNuevoMiembroVisible(false);
+            setCodigoGenerado(null);
+          }}
         >
           <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Agregar Miembro al Equipo</Text>
-              <TouchableOpacity onPress={() => setModalNuevoMiembroVisible(false)}>
+              <Text style={styles.modalTitle}>Generar Invitación</Text>
+              <TouchableOpacity onPress={() => {
+                setModalNuevoMiembroVisible(false);
+                setCodigoGenerado(null);
+              }}>
                 <MaterialIcons name="close" size={24} color="#5b5f5c" />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}>Nombre Completo *</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={nuevoNombreMiembro}
-              onChangeText={setNuevoNombreMiembro}
-              placeholder="Ej: Carlos Zambrano"
-            />
-
-            <Text style={styles.inputLabel}>Teléfono</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={nuevoTelefonoMiembro}
-              onChangeText={setNuevoTelefonoMiembro}
-              placeholder="Ej: +593 98 765 4321"
-              keyboardType="phone-pad"
-            />
-
-            <Text style={styles.inputLabel}>Nacionalidad</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={nuevoNacionalidadMiembro}
-              onChangeText={setNuevoNacionalidadMiembro}
-              placeholder="Ej: Ecuatoriano"
-            />
-
-            <Text style={styles.inputLabel}>Rol Asignado *</Text>
-            <View style={styles.roleSelectorRow}>
-              {(['Worker', 'Viewer', 'Admin'] as const).map((r) => (
-                <TouchableOpacity
-                  key={r}
-                  style={[
-                    styles.roleBtn,
-                    nuevoRolMiembro === r && styles.roleBtnActive,
-                  ]}
-                  onPress={() => setNuevoRolMiembro(r)}
-                >
-                  <Text
-                    style={[
-                      styles.roleBtnText,
-                      nuevoRolMiembro === r && styles.roleBtnTextActive,
-                    ]}
-                  >
-                    {r === 'Admin' ? 'Admin' : r === 'Worker' ? 'Trabajador' : 'Observador'}
+            {codigoGenerado ? (
+              <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                <Text style={{ fontSize: 16, color: '#5b5f5c', textAlign: 'center', marginBottom: 15 }}>
+                  Comparte este código con tu {nuevoRolMiembro === 'Worker' ? 'Trabajador' : 'Observador'}.
+                </Text>
+                <View style={{ backgroundColor: '#e8f5e9', padding: 20, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: '#a1d494' }}>
+                  <Text style={{ fontSize: 32, fontWeight: 'bold', letterSpacing: 8, color: '#154212' }}>
+                    {codigoGenerado}
                   </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                </View>
+                <Text style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center' }}>
+                  El código expira en 7 días y es de un solo uso.
+                </Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.inputLabel}>¿Qué rol tendrá el nuevo miembro?</Text>
+                <View style={styles.roleSelectorRow}>
+                  {(['Worker', 'Viewer'] as const).map((r) => (
+                    <TouchableOpacity
+                      key={r}
+                      style={[
+                        styles.roleBtn,
+                        nuevoRolMiembro === r && styles.roleBtnActive,
+                      ]}
+                      onPress={() => setNuevoRolMiembro(r)}
+                    >
+                      <Text
+                        style={[
+                          styles.roleBtnText,
+                          nuevoRolMiembro === r && styles.roleBtnTextActive,
+                        ]}
+                      >
+                        {r === 'Worker' ? 'Trabajador' : 'Observador'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity 
-                style={styles.btnModalCancel}
-                onPress={() => setModalNuevoMiembroVisible(false)}
-                disabled={guardando}
-              >
-                <Text style={styles.btnModalCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.btnModalSave}
-                onPress={handleAgregarMiembro}
-                disabled={guardando}
-              >
-                {guardando ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.btnModalSaveText}>Registrar</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity 
+                    style={styles.btnModalCancel}
+                    onPress={() => setModalNuevoMiembroVisible(false)}
+                    disabled={guardando}
+                  >
+                    <Text style={styles.btnModalCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.btnModalSave}
+                    onPress={handleGenerarCodigo}
+                    disabled={guardando}
+                  >
+                    {guardando ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.btnModalSaveText}>Generar Código</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>

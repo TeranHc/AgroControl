@@ -15,9 +15,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
+import { useActiveFinca } from '../../contexts/ActiveFincaContext';
 
 export default function PersonalScreen() {
   const router = useRouter();
+  const { activeFinca } = useActiveFinca();
 
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -45,6 +47,7 @@ export default function PersonalScreen() {
           .from('miembros_finca')
           .select('*')
           .eq('user_id', user.id)
+          .eq('finca_id', activeFinca?.id)
           .maybeSingle();
 
         if (error) throw error;
@@ -65,7 +68,7 @@ export default function PersonalScreen() {
     };
 
     cargarDatos();
-  }, []);
+  }, [activeFinca]);
 
   const handleGuardar = async () => {
     if (!nombreCompleto.trim()) {

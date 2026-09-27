@@ -110,6 +110,19 @@ export default function ConfiguracionScreen() {
             </View>
             <MaterialIcons name="chevron-right" size={22} color="#72796e" />
           </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity 
+            style={styles.actionRow} 
+            onPress={() => router.push('/perfil/cambiar-password')}
+          >
+            <View style={styles.actionLeft}>
+              <MaterialIcons name="lock-outline" size={22} color="#154212" />
+              <Text style={styles.actionText}>Cambiar Contraseña</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={22} color="#72796e" />
+          </TouchableOpacity>
         </View>
 
         {/* Información del Sistema */}
