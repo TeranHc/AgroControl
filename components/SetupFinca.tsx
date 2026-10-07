@@ -26,7 +26,8 @@ export default function SetupFinca({ fromProfile = false }: SetupFincaProps) {
     }
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) throw new Error('No hay sesión de usuario activa.');
 
       const { data: fincaId, error: rpcError } = await supabase.rpc('crear_finca_y_miembro', {
@@ -65,7 +66,8 @@ export default function SetupFinca({ fromProfile = false }: SetupFincaProps) {
     }
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) throw new Error('No hay sesión de usuario activa.');
 
       const nombreTrabajador = user.user_metadata?.full_name || user.user_metadata?.nombre_completo || 'Miembro del Equipo';

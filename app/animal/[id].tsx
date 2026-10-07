@@ -14,6 +14,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
+import { getDb } from "../../lib/database";
 
 // Definimos el tipo de dato
 type Animal = {
@@ -65,14 +66,14 @@ export default function AnimalDetailScreen() {
   useEffect(() => {
     const fetchAnimal = async () => {
       try {
-        const { data, error } = await supabase
-          .from("animales")
-          .select("*")
-          .eq("id", id)
-          .single();
-
-        if (error) throw error;
-        setAnimal(data);
+        const db = await getDb();
+        const data = await db.getFirstAsync("SELECT * FROM animales WHERE id = ?", [id as string]);
+        if (data) {
+          setAnimal(data as unknown as Animal);
+        } else {
+          Alert.alert("Error", "Animal no encontrado localmente.");
+          router.back();
+        }
       } catch (err) {
         console.error("Error al cargar animal:", err);
         Alert.alert("Error", "No se pudo cargar la información del animal.");
@@ -81,26 +82,21 @@ export default function AnimalDetailScreen() {
         setLoadingAnimal(false);
       }
     };
-
     if (id) fetchAnimal();
   }, [id]);
 
 
-  // Cargar último peso
+  // Cargar Ãºltimo peso
   useEffect(() => {
     const fetchUltimoPeso = async () => {
       if (!animal) return;
       setLoadingPeso(true);
       try {
-        const { data, error } = await supabase
-          .from("pesajes")
-          .select("peso_kg")
-          .eq("animal_id", animal.id)
-          .order("fecha_pesaje", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (error) throw error;
+        const db = await getDb();
+        const data = await db.getFirstAsync<any>(
+          "SELECT peso_kg FROM pesajes WHERE animal_id = ? AND deleted_at IS NULL ORDER BY fecha_pesaje DESC LIMIT 1",
+          [animal.id]
+        );
         if (data) setUltimoPeso(data.peso_kg);
       } catch (err) {
         console.error("Error al obtener último peso:", err);
@@ -111,21 +107,22 @@ export default function AnimalDetailScreen() {
     fetchUltimoPeso();
   }, [animal]);
 
-  // Cargar genealogía
+  // Cargar genealogÃ­a
   useEffect(() => {
     const fetchPadres = async () => {
       if (!animal || (!animal.padre_id && !animal.madre_id)) return;
       try {
-        const ids = [animal.padre_id, animal.madre_id].filter(Boolean) as string[];
-        const { data, error } = await supabase
-          .from("animales")
-          .select("id, codigo_animal, nombre")
-          .in("id", ids);
-
-        if (error) throw error;
+        const db = await getDb();
+        const ids = [animal.padre_id, animal.madre_id].filter(Boolean);
+        if (ids.length === 0) return;
+        const placeholders = ids.map(() => '?').join(',');
+        const data = await db.getAllAsync<any>(
+          `SELECT id, codigo_animal, nombre FROM animales WHERE id IN (${placeholders})`,
+          ids
+        );
         if (data) {
-          const padre = data.find((a) => a.id === animal.padre_id);
-          const madre = data.find((a) => a.id === animal.madre_id);
+          const padre = data.find((a: any) => a.id === animal.padre_id);
+          const madre = data.find((a: any) => a.id === animal.madre_id);
           if (padre) setPadreNombre(`${padre.codigo_animal} ${padre.nombre ? `(${padre.nombre})` : ""}`);
           if (madre) setMadreNombre(`${madre.codigo_animal} ${madre.nombre ? `(${madre.nombre})` : ""}`);
         }
@@ -136,40 +133,40 @@ export default function AnimalDetailScreen() {
     fetchPadres();
   }, [animal]);
 
-  // Cargar historiales (Pesajes, Salud, Reproducción)
+  // Cargar historiales (Pesajes, Salud, ReproducciÃ³n)
   const fetchHistoriales = async () => {
     if (!animal) return;
     try {
+      const db = await getDb();
       const [pesajesRes, saludRes, reproRes] = await Promise.all([
-        supabase.from('pesajes').select('*').eq('animal_id', animal.id).order('fecha_pesaje', { ascending: false }),
-        supabase.from('registros_salud').select('*').eq('animal_id', animal.id).order('fecha_aplicacion', { ascending: false }),
-        supabase.from('reproduccion').select('*').eq('animal_id', animal.id).order('fecha_evento', { ascending: false })
+        db.getAllAsync<any>('SELECT * FROM pesajes WHERE animal_id = ? AND deleted_at IS NULL ORDER BY fecha_pesaje DESC', [animal.id]),
+        db.getAllAsync<any>('SELECT * FROM registros_salud WHERE animal_id = ? AND deleted_at IS NULL ORDER BY fecha_aplicacion DESC', [animal.id]),
+        db.getAllAsync<any>('SELECT * FROM reproduccion WHERE animal_id = ? AND deleted_at IS NULL ORDER BY fecha_evento DESC', [animal.id])
       ]);
       
-      if (pesajesRes.data) setHistorialPesajes(pesajesRes.data);
-      if (saludRes.data) setHistorialSalud(saludRes.data);
-      if (reproRes.data) setHistorialRepro(reproRes.data);
+      if (pesajesRes) setHistorialPesajes(pesajesRes);
+      if (saludRes) setHistorialSalud(saludRes);
+      if (reproRes) setHistorialRepro(reproRes);
     } catch (err) {
       console.error("Error al cargar historiales:", err);
     }
   };
-
   useEffect(() => {
     fetchHistoriales();
   }, [animal]);
 
-  // Cálculo de edad
+  // CÃ¡lculo de edad
   const calcularEdad = (fechaNacimiento: string | null) => {
     if (!fechaNacimiento) return "No registrada";
     const hoy = new Date();
     const nacimiento = new Date(fechaNacimiento);
-    let años = hoy.getFullYear() - nacimiento.getFullYear();
+    let anios = hoy.getFullYear() - nacimiento.getFullYear();
     let meses = hoy.getMonth() - nacimiento.getMonth();
     if (meses < 0 || (meses === 0 && hoy.getDate() < nacimiento.getDate())) {
-      años--;
+      anios--;
       meses += 12;
     }
-    if (años > 0) return `${años} año${años > 1 ? "s" : ""} ${meses}m`;
+    if (anios > 0) return `${anios} año${anios > 1 ? "s" : ""} ${meses}m`;
     return `${meses} mes${meses !== 1 ? "es" : ""}`;
   };
 
@@ -195,7 +192,7 @@ export default function AnimalDetailScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
-        {/* TopBar (Navegación) */}
+        {/* TopBar (NavegaciÃ³n) */}
         <View style={styles.topBar}>
         <TouchableOpacity style={styles.btnBack} onPress={() => router.push("/(tabs)/animales")}>
             <MaterialIcons name="arrow-back" size={24} color="#424242" />
@@ -224,12 +221,12 @@ export default function AnimalDetailScreen() {
             <View style={styles.headerInfo}>
               <View style={styles.titleRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.codeText}>CÓDIGO: {animal.codigo_animal}</Text>
+                  <Text style={styles.codeText}>CÃ“DIGO: {animal.codigo_animal}</Text>
                   <Text style={styles.animalName}>{animal.nombre || "Sin nombre"}</Text>
                 </View>
 
                 <View style={styles.actionButtonsRow}>
-                  <TouchableOpacity style={styles.circularBtn} onPress={() => Alert.alert('Próximamente', 'Módulo de escáner en desarrollo.')}>
+                  <TouchableOpacity style={styles.circularBtn} onPress={() => Alert.alert('PrÃ³ximamente', 'MÃ³dulo de escÃ¡ner en desarrollo.')}>
                     <MaterialIcons name="qr-code-2" size={20} color="#424242" />
                   </TouchableOpacity>
                   <TouchableOpacity 
@@ -251,7 +248,7 @@ export default function AnimalDetailScreen() {
                   <Text style={styles.gridValue}>{animal.raza}</Text>
                 </View>
                 <View style={styles.gridBox}>
-                  <Text style={styles.gridLabel}>GÉNERO</Text>
+                  <Text style={styles.gridLabel}>GÃ‰NERO</Text>
                   <Text style={styles.gridValue}>{animal.genero || "N/D"}</Text>
                 </View>
                 <View style={styles.gridBox}>
@@ -260,7 +257,7 @@ export default function AnimalDetailScreen() {
                 </View>
                 <View style={[styles.gridBox, styles.gridBoxHighlighted, { width: "100%", flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
                   <View>
-                    <Text style={styles.gridLabel}>ÚLTIMO PESO</Text>
+                    <Text style={styles.gridLabel}>ÃšLTIMO PESO</Text>
                     {loadingPeso ? (
                       <ActivityIndicator size="small" color="#154212" style={{ alignSelf: 'flex-start', marginTop: 4 }} />
                     ) : (
@@ -278,17 +275,17 @@ export default function AnimalDetailScreen() {
           <View style={{ height: 20 }} />
           
           <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Información General</Text>
+            <Text style={styles.sectionTitle}>InformaciÃ³n General</Text>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>FECHA DE NACIMIENTO</Text>
               <Text style={styles.infoValue}>{animal.fecha_nacimiento || 'No registrada'}</Text>
             </View>
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>PROPÓSITO</Text>
+              <Text style={styles.infoLabel}>PROPÃ“SITO</Text>
               <Text style={styles.infoValue}>{animal.proposito || "No especificado"}</Text>
             </View>
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>GENEALOGÍA</Text>
+              <Text style={styles.infoLabel}>GENEALOGÃA</Text>
               <Text style={styles.infoValue}>Padre: {padreNombre || "No registrado"}{"\n"}Madre: {madreNombre || "No registrada"}</Text>
             </View>
             {animal.notas ? (
@@ -304,7 +301,7 @@ export default function AnimalDetailScreen() {
               <Text style={styles.sectionTitle}>Historial de Pesajes</Text>
               <TouchableOpacity style={styles.btnAdd} onPress={() => setModalPesajeVisible(true)}>
                 <MaterialIcons name="add" size={16} color="#ffffff" />
-                <Text style={styles.btnAddText}>AÑADIR</Text>
+                <Text style={styles.btnAddText}>AÃ‘ADIR</Text>
               </TouchableOpacity>
             </View>
             {historialPesajes.length === 0 ? (
@@ -321,7 +318,7 @@ export default function AnimalDetailScreen() {
                       <Text style={styles.gridValue}>{p.peso_kg} kg</Text>
                     </View>
                     <View style={styles.gridBox}>
-                      <Text style={styles.gridLabel}>CONDICIÓN</Text>
+                      <Text style={styles.gridLabel}>CONDICIÃ“N</Text>
                       <Text style={styles.gridValue}>{p.condicion_corporal || "N/D"}</Text>
                     </View>
                   </View>
@@ -338,7 +335,7 @@ export default function AnimalDetailScreen() {
               <Text style={styles.sectionTitle}>Registros de Salud</Text>
               <TouchableOpacity style={styles.btnAdd} onPress={() => setModalSaludVisible(true)}>
                 <MaterialIcons name="add" size={16} color="#ffffff" />
-                <Text style={styles.btnAddText}>AÑADIR</Text>
+                <Text style={styles.btnAddText}>AÃ‘ADIR</Text>
               </TouchableOpacity>
             </View>
             {historialSalud.length === 0 ? (
@@ -370,7 +367,7 @@ export default function AnimalDetailScreen() {
                     </View>
                   </View>
                   {s.proxima_dosis ? (
-                     <Text style={[styles.detailNotes, { color: '#2e7d32', fontWeight: 'bold' }]}>Próxima Dosis: {s.proxima_dosis}</Text>
+                     <Text style={[styles.detailNotes, { color: '#2e7d32', fontWeight: 'bold' }]}>PrÃ³xima Dosis: {s.proxima_dosis}</Text>
                   ) : null}
                   {s.notas ? (
                     <Text style={styles.detailNotes}>Notas: {s.notas}</Text>
@@ -385,7 +382,7 @@ export default function AnimalDetailScreen() {
               <Text style={styles.sectionTitle}>Eventos Reproductivos</Text>
               <TouchableOpacity style={styles.btnAdd} onPress={() => setModalReproVisible(true)}>
                 <MaterialIcons name="add" size={16} color="#ffffff" />
-                <Text style={styles.btnAddText}>AÑADIR</Text>
+                <Text style={styles.btnAddText}>AÃ‘ADIR</Text>
               </TouchableOpacity>
             </View>
             {historialRepro.length === 0 ? (
@@ -404,7 +401,7 @@ export default function AnimalDetailScreen() {
                       <Text style={styles.gridValue}>{r.estado_gestacion || "N/D"}</Text>
                     </View>
                     <View style={styles.gridBox}>
-                      <Text style={styles.gridLabel}>CRÍAS NACIDAS</Text>
+                      <Text style={styles.gridLabel}>CRÃAS NACIDAS</Text>
                       <Text style={styles.gridValue}>{r.crias_nacidas !== null ? r.crias_nacidas : "N/D"}</Text>
                     </View>
                   </View>
@@ -422,7 +419,7 @@ export default function AnimalDetailScreen() {
         </ScrollView>
 
         {/* Modales */}
-        <Modal visible={modalAnimalVisible} animationType="slide" onRequestClose={() => setModalAnimalVisible(false)}>
+        <Modal statusBarTranslucent visible={modalAnimalVisible} animationType="slide" onRequestClose={() => setModalAnimalVisible(false)}>
           <AnimalForm 
             onClose={() => setModalAnimalVisible(false)} 
             onSuccess={() => { setModalAnimalVisible(false); fetchHistoriales(); }}
@@ -430,7 +427,7 @@ export default function AnimalDetailScreen() {
           />
         </Modal>
 
-        <Modal visible={modalPesajeVisible} animationType="slide" onRequestClose={() => setModalPesajeVisible(false)}>
+        <Modal statusBarTranslucent visible={modalPesajeVisible} animationType="slide" onRequestClose={() => setModalPesajeVisible(false)}>
           <PesajeForm 
             onClose={() => setModalPesajeVisible(false)} 
             onSuccess={() => { setModalPesajeVisible(false); fetchHistoriales(); }}
@@ -438,7 +435,7 @@ export default function AnimalDetailScreen() {
           />
         </Modal>
 
-        <Modal visible={modalSaludVisible} animationType="slide" onRequestClose={() => setModalSaludVisible(false)}>
+        <Modal statusBarTranslucent visible={modalSaludVisible} animationType="slide" onRequestClose={() => setModalSaludVisible(false)}>
           <SaludForm 
             onClose={() => setModalSaludVisible(false)} 
             onSuccess={() => { setModalSaludVisible(false); fetchHistoriales(); }}
@@ -446,7 +443,7 @@ export default function AnimalDetailScreen() {
           />
         </Modal>
 
-        <Modal visible={modalReproVisible} animationType="slide" onRequestClose={() => setModalReproVisible(false)}>
+        <Modal statusBarTranslucent visible={modalReproVisible} animationType="slide" onRequestClose={() => setModalReproVisible(false)}>
           <ReproduccionForm 
             onClose={() => setModalReproVisible(false)} 
             onSuccess={() => { setModalReproVisible(false); fetchHistoriales(); }}

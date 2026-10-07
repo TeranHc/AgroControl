@@ -8,17 +8,20 @@ import {
   ActivityIndicator, 
   Alert,
   ScrollView,
-  Platform
+  Platform,
+  Modal
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'expo-router';
 import { useActiveFinca } from '../../contexts/ActiveFincaContext';
+import { getDb } from '../../lib/database';
 
 export default function FincaScreen() {
   const router = useRouter();
-  const { activeFinca, recargarFincas } = useActiveFinca();
+  const insets = useSafeAreaInsets();
+  const { activeFinca, recargarFincas, fincas, cambiarFinca } = useActiveFinca();
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -31,6 +34,8 @@ export default function FincaScreen() {
   // Estados de edición / creación
   const [nombreFinca, setNombreFinca] = useState('');
   const [modoEdicion, setModoEdicion] = useState(false);
+  const [modalAction, setModalAction] = useState<'eliminar' | 'salir' | null>(null);
+  const [passwordAction, setPasswordAction] = useState('');
 
   // Verificar si el usuario ya tiene una finca asignada
   const checkFinca = async () => {
@@ -91,6 +96,71 @@ export default function FincaScreen() {
     }
   };
 
+  const handleConfirmarAccionPeligrosa = async () => {
+    if (!passwordAction) {
+      Alert.alert('Contraseña requerida', 'Debes ingresar tu contraseña para confirmar.');
+      return;
+    }
+    if (!fincaActual || !modalAction) return;
+
+    setIsProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user?.email) throw new Error('No se pudo identificar tu usuario.');
+
+      // 1. Verify password
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: passwordAction
+      });
+
+      if (authError) {
+        throw new Error('Contraseña incorrecta.');
+      }
+
+      const db = await getDb();
+
+      if (modalAction === 'eliminar') {
+        // 2. Delete Finca via RPC
+        const { error: deleteError } = await supabase.rpc('eliminar_finca', {
+          finca_id_to_delete: fincaActual.id
+        });
+
+        if (deleteError) {
+          throw new Error(deleteError.message || 'Error al eliminar la finca en el servidor.');
+        }
+
+        // 3. Limpiar base de datos local para forzar el reinicio
+        await db.runAsync('DELETE FROM fincas WHERE id = ?', fincaActual.id);
+        await db.runAsync('DELETE FROM miembros_finca WHERE finca_id = ?', fincaActual.id);
+        
+        Alert.alert('Finca Eliminada', 'Todos los datos de la finca han sido borrados.');
+      } else if (modalAction === 'salir') {
+        // Leave Finca via RPC
+        const { error: leaveError } = await supabase.rpc('salir_de_finca', {
+          finca_id_to_leave: fincaActual.id
+        });
+          
+        if (leaveError) throw leaveError;
+        
+        await db.runAsync('DELETE FROM miembros_finca WHERE finca_id = ? AND user_id = ?', fincaActual.id, user.id);
+        Alert.alert('Has salido', 'Ya no formas parte de esta finca.');
+      }
+
+      setModalAction(null);
+      setPasswordAction('');
+      await recargarFincas();
+      if (modalAction === 'eliminar' || fincas.length <= 1) {
+        router.back();
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'No se pudo completar la acción.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Función para actualizar el nombre de la finca existente
   const handleActualizarFinca = async () => {
     if (!nombreFinca.trim()) {
@@ -141,9 +211,10 @@ export default function FincaScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {fincaActual ? (
-          // =========================================================
-          // VISTA: CUANDO YA TIENE FINCA REGISTRADA
-          // =========================================================
+          <>
+          {/* ========================================================= */}
+          {/* VISTA: CUANDO YA TIENE FINCA REGISTRADA */}
+          {/* ========================================================= */}
           <View style={styles.card}>
             <View style={styles.cardHeaderRow}>
               <MaterialIcons name="agriculture" size={40} color="#154212" />
@@ -229,11 +300,74 @@ export default function FincaScreen() {
                 {new Date(fincaActual.created_at).toLocaleDateString()}
               </Text>
             </View>
+
+            {!esAdmin && (
+              <TouchableOpacity
+                style={{ marginTop: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ba1a1a15', padding: 12, borderRadius: 8 }}
+                onPress={() => setModalAction('salir')}
+              >
+                <MaterialIcons name="exit-to-app" size={20} color="#ba1a1a" style={{ marginRight: 8 }} />
+                <Text style={{ color: '#ba1a1a', fontWeight: 'bold' }}>Salir de la Finca</Text>
+              </TouchableOpacity>
+            )}
+
+            {esAdmin && (
+              <TouchableOpacity
+                style={{ marginTop: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ba1a1a15', padding: 12, borderRadius: 8 }}
+                onPress={() => setModalAction('eliminar')}
+              >
+                <MaterialIcons name="delete-forever" size={20} color="#ba1a1a" style={{ marginRight: 8 }} />
+                <Text style={{ color: '#ba1a1a', fontWeight: 'bold' }}>Eliminar Finca Permanentemente</Text>
+              </TouchableOpacity>
+            )}
           </View>
+
+          {/* ========================================================= */}
+          {/* VISTA: LISTA DE TODAS LAS FINCAS */}
+          {/* ========================================================= */}
+          {fincas && fincas.length > 1 && (
+            <View style={{ marginTop: 24, paddingHorizontal: 4 }}>
+              <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#154212', marginBottom: 12 }}>Tus Fincas</Text>
+              {fincas.map(f => (
+                <TouchableOpacity 
+                  key={f.id} 
+                  style={[
+                    styles.card, 
+                    { marginBottom: 12, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+                    f.id === fincaActual.id && { borderColor: '#154212', borderWidth: 2 }
+                  ]}
+                  onPress={async () => {
+                    if (f.id !== fincaActual.id) {
+                      await cambiarFinca(f.id);
+                    }
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ backgroundColor: f.id === fincaActual.id ? '#154212' : '#f4f4ee', padding: 10, borderRadius: 12 }}>
+                      <MaterialIcons name="agriculture" size={24} color={f.id === fincaActual.id ? '#ffffff' : '#154212'} />
+                    </View>
+                    <View>
+                      <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1a1c19' }}>
+                        {f.nombre}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: '#72796e', marginTop: 2 }}>
+                        Rol: {f.rol}
+                      </Text>
+                    </View>
+                  </View>
+                  {f.id === fincaActual.id && (
+                    <MaterialIcons name="check-circle" size={24} color="#154212" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          </>
         ) : (
-          // =========================================================
-          // VISTA: CREACIÓN DE FINCA
-          // =========================================================
+          <>
+          {/* ========================================================= */}
+          {/* VISTA: CREACION DE FINCA */}
+          {/* ========================================================= */}
           <View style={styles.card}>
             <View style={styles.alertBox}>
               <MaterialIcons name="info-outline" size={24} color="#93000a" />
@@ -265,8 +399,79 @@ export default function FincaScreen() {
               )}
             </TouchableOpacity>
           </View>
-        )}
+        </>
+          )}
       </ScrollView>
+
+      {/* Modal Confirmar Eliminar */}
+      <Modal statusBarTranslucent
+        visible={!!modalAction}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setModalAction(null);
+          setPasswordAction('');
+        }}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={() => {
+            setModalAction(null);
+            setPasswordAction('');
+          }}
+        >
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: '#ba1a1a' }]}>¡Atención!</Text>
+              <TouchableOpacity onPress={() => {
+                setModalAction(null);
+                setPasswordAction('');
+              }}>
+                <MaterialIcons name="close" size={24} color="#5b5f5c" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ fontSize: 16, color: '#5b5f5c', marginBottom: 15 }}>
+              {modalAction === "eliminar" ? "Estás a punto de eliminar la finca permanentemente. Todos los animales, pesajes y registros asociados se perderán sin recuperación." : "¿Estás seguro de salir de la Finca? No volverás a poder consultar los datos."}
+            </Text>
+
+            <Text style={styles.label}>Ingresa tu contraseña para confirmar:</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Contraseña..."
+              secureTextEntry
+              value={passwordAction}
+              onChangeText={setPasswordAction}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={styles.btnModalCancel}
+                onPress={() => {
+                  setModalAction(null);
+                  setPasswordAction('');
+                }}
+                disabled={isProcessing}
+              >
+                <Text style={styles.btnModalCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.btnModalSave, { backgroundColor: '#ba1a1a' }]}
+                onPress={handleConfirmarAccionPeligrosa}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.btnModalSaveText}>{modalAction === "eliminar" ? "Eliminar Finca" : "Salir"}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -283,7 +488,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#154212' },
   scrollContent: { padding: 16 },
   card: {
-    backgroundColor: '#ffffff', borderRadius: 16, padding: 20,
+    backgroundColor: '#ffffff', borderRadius: 16, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 0,
     borderWidth: 1, borderColor: '#e3e3de', shadowColor: '#2d5a27',
     shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 2,
   },
@@ -336,4 +541,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 8
   },
   btnPrimaryText: { color: '#ffffff', fontSize: 15, fontWeight: 'bold' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#ffffff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold' },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 10 },
+  btnModalCancel: { flex: 1, height: 48, borderRadius: 8, borderWidth: 1, borderColor: '#5b5f5c', justifyContent: 'center', alignItems: 'center' },
+  btnModalCancelText: { color: '#5b5f5c', fontWeight: 'bold' },
+  btnModalSave: { flex: 1, height: 48, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  btnModalSaveText: { color: '#fff', fontWeight: 'bold' }
 });
+
+
+
+
+
+
+
+
+
+
+

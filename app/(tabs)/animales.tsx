@@ -1,4 +1,4 @@
-import { MaterialIcons } from "@expo/vector-icons";
+﻿import { MaterialIcons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,6 +20,8 @@ import AnimalForm from '../../components/forms/AnimalForm';
 import CustomAlert from '../../components/CustomAlert';
 import { supabase } from "../../lib/supabase";
 import { useActiveFinca } from '../../contexts/ActiveFincaContext';
+import { getDb } from "../../lib/database";
+import { syncFincaData } from "../../lib/sync";
 
 export type Animal = {
   id: string;
@@ -70,14 +72,13 @@ export default function AnimalesScreen() {
     try {
       if (!activeFinca) return;
 
-      const { data, error } = await supabase
-        .from("animales")
-        .select("*")
-        .eq('finca_id', activeFinca.id)
-        .order("created_at", { ascending: false });
+      const db = await getDb();
+      const data = await db.getAllAsync<Animal>(
+        "SELECT * FROM animales WHERE finca_id = ? AND deleted_at IS NULL ORDER BY created_at DESC",
+        activeFinca.id
+      );
 
-      if (error) throw error;
-      if (data) setAnimales(data);
+      setAnimales(data);
     } catch (error) {
       console.error("Error obteniendo animales:", error);
     } finally {
@@ -98,7 +99,7 @@ export default function AnimalesScreen() {
   const confirmarEliminar = (animal: Animal) => {
     showAlert(
       'Eliminar Animal',
-      `¿Estás seguro que deseas eliminar el animal "${animal.codigo_animal}"? Esta acción borrará también su historial de pesajes y salud.`,
+      `Â¿EstÃ¡s seguro que deseas eliminar el animal "${animal.codigo_animal}"? Esta acciÃ³n borrarÃ¡ tambiÃ©n su historial de pesajes y salud.`,
       'warning',
       () => handleDelete(animal.id),
       () => setAlertConfig(prev => ({ ...prev, visible: false }))
@@ -108,11 +109,18 @@ export default function AnimalesScreen() {
   const handleDelete = async (id: string) => {
     setAlertConfig(prev => ({ ...prev, visible: false }));
     try {
-      const { error } = await supabase.from('animales').delete().eq('id', id);
-      if (error) throw error;
-      showAlert('¡Éxito!', 'Animal eliminado correctamente.', 'success', () => {
+      if (!activeFinca) return;
+      const db = await getDb();
+      const deletedAt = new Date().toISOString();
+      await db.runAsync(
+        "UPDATE animales SET deleted_at = ?, sync_status = 'updated' WHERE id = ?",
+        deletedAt, id
+      );
+      
+      showAlert('Â¡Ã‰xito!', 'Animal eliminado correctamente.', 'success', () => {
         setAlertConfig(prev => ({ ...prev, visible: false }));
         fetchAnimales();
+        syncFincaData(activeFinca.id).catch(console.error); // Trigger background sync
       });
     } catch (error: any) {
       console.error(error);
@@ -148,7 +156,7 @@ export default function AnimalesScreen() {
       <TouchableOpacity
         style={[styles.card, { borderLeftColor: statusStyle.border }]}
         activeOpacity={0.7}
-        // 👇 AQUÍ ESTÁ LA MAGIA: Navegamos a la nueva pantalla pasando el ID
+        // ðŸ‘‡ AQUÃ ESTÃ LA MAGIA: Navegamos a la nueva pantalla pasando el ID
         onPress={() => router.push({ pathname: "/animal/[id]", params: { id: item.id } })}      >
         <View style={styles.imageContainer}>
           {item.fotografia_url ? (
@@ -170,7 +178,7 @@ export default function AnimalesScreen() {
 
           <Text style={styles.animalName}>{item.nombre || "Sin nombre"}</Text>
           <Text style={styles.animalBreed}>
-            {item.especie} • {item.raza || "Raza no especificada"}
+            {item.especie} â€¢ {item.raza || "Raza no especificada"}
           </Text>
 
           <View style={styles.cardFooter}>
@@ -222,7 +230,7 @@ export default function AnimalesScreen() {
         <MaterialIcons name="search" size={20} color="#72796e" style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Buscar por código o nombre..."
+          placeholder="Buscar por cÃ³digo o nombre..."
           placeholderTextColor="#72796e"
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -251,7 +259,7 @@ export default function AnimalesScreen() {
         />
       )}
 
-      <Modal
+      <Modal statusBarTranslucent
         visible={isFormVisible}
         animationType="slide"
         onRequestClose={() => setIsFormVisible(false)}

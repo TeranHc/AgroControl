@@ -16,6 +16,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/Header';
 import { MaterialIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
+import { getDb } from '../../lib/database';
+import { syncFincaData } from '../../lib/sync';
 import { useActiveFinca } from '../../contexts/ActiveFincaContext';
 import PesajeForm from '../../components/forms/PesajeForm';
 import CustomAlert from '../../components/CustomAlert';
@@ -74,15 +76,18 @@ export default function PesajesScreen() {
   const handleDelete = async (id: string) => {
     setAlertConfig(prev => ({ ...prev, visible: false }));
     try {
-      const { error } = await supabase.from('pesajes').delete().eq('id', id);
-      if (error) throw error;
-      showAlert('¡Éxito!', 'Pesaje eliminado correctamente.', 'success', () => {
+      if (!activeFinca) return;
+      const db = await getDb();
+      const now = new Date().toISOString();
+      await db.runAsync(`UPDATE pesajes SET deleted_at = ?, sync_status = 'updated' WHERE id = ?`, [now, id]);
+      showAlert('¡Éxito!', 'Pesaje eliminado localmente.', 'success', () => {
         setAlertConfig(prev => ({ ...prev, visible: false }));
         fetchPesajes();
+        syncFincaData(activeFinca.id).catch(console.error);
       });
     } catch (error: any) {
       console.error(error);
-      showAlert('Error', 'No se pudo eliminar el pesaje.', 'error', () => setAlertConfig(prev => ({ ...prev, visible: false })));
+      showAlert('Error', 'No se pudo eliminar.', 'error', () => setAlertConfig(prev => ({ ...prev, visible: false })));
     }
   };
 
@@ -90,28 +95,29 @@ export default function PesajesScreen() {
   const fetchPesajes = async () => {
     try {
       if (!activeFinca) return;
-
-      // Obtenemos los pesajes y hacemos JOIN con la tabla animales usando !inner para poder filtrar
-      const { data, error } = await supabase
-        .from('pesajes')
-        .select(`
-          id,
-          animal_id,
-          peso_kg,
-          fecha_pesaje,
-          condicion_corporal,
-          notas,
-          animales!inner ( nombre, codigo_animal, finca_id, especie, fotografia_url )
-        `)
-        .eq('animales.finca_id', activeFinca.id)
-        .order('fecha_pesaje', { ascending: false });
-
-      if (error) throw error;
-
+      const db = await getDb();
+      const data = await db.getAllAsync(
+        `SELECT 
+          p.id, p.animal_id, p.peso_kg, p.fecha_pesaje, p.condicion_corporal, p.notas,
+          a.nombre as animal_nombre, a.codigo_animal, a.finca_id, a.especie, a.fotografia_url
+         FROM pesajes p
+         INNER JOIN animales a ON p.animal_id = a.id
+         WHERE p.finca_id = ? AND p.deleted_at IS NULL AND a.deleted_at IS NULL
+         ORDER BY p.fecha_pesaje DESC`,
+        [activeFinca.id]
+      );
       if (data) {
-        // @ts-ignore (Supabase a veces confunde los tipos en los joins)
-        const registros: Pesaje[] = data;
-        setPesajes(registros);
+        const registros = data.map((r: any) => ({
+          ...r,
+          animales: {
+            nombre: r.animal_nombre,
+            codigo_animal: r.codigo_animal,
+            finca_id: r.finca_id,
+            especie: r.especie,
+            fotografia_url: r.fotografia_url
+          }
+        }));
+        setPesajes(registros as Pesaje[]);
       }
     } catch (error) {
       console.error('Error obteniendo pesajes:', error);
@@ -326,7 +332,7 @@ export default function PesajesScreen() {
         }
       />
 
-      <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
+      <Modal statusBarTranslucent visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <PesajeForm 
           onClose={() => setModalVisible(false)} 
           onSuccess={() => { setModalVisible(false); fetchPesajes(); }} 
@@ -334,7 +340,7 @@ export default function PesajesScreen() {
         />
       </Modal>
 
-      <Modal visible={!!viewingPesaje} animationType="fade" transparent onRequestClose={() => setViewingPesaje(null)}>
+      <Modal statusBarTranslucent visible={!!viewingPesaje} animationType="fade" transparent onRequestClose={() => setViewingPesaje(null)}>
         {viewingPesaje && (
           <View style={styles.detailOverlay}>
             <View style={styles.detailContent}>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, Modal, FlatList } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 
 export const SelectInput = ({ 
@@ -18,6 +19,7 @@ export const SelectInput = ({
   disabled?: boolean;
 }) => {
   const [modalVisible, setModalVisible] = useState(false);
+  const insets = useSafeAreaInsets();
   const [busqueda, setBusqueda] = useState('');
 
   const opcionesFiltradas = options.filter(o => 
@@ -40,9 +42,9 @@ export const SelectInput = ({
         <MaterialIcons name="arrow-drop-down" size={24} color="#72796e" />
       </TouchableOpacity>
 
-      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
+      <Modal statusBarTranslucent visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 20) }]} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Seleccione {label.replace('*', '').trim()}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
@@ -104,7 +106,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 11, fontWeight: '700', color: '#42493e', textTransform: 'uppercase', marginBottom: 6, marginTop: 10, letterSpacing: 0.5 },
   selectInput: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#c2c9bb', borderRadius: 8, paddingHorizontal: 12, height: 46 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#ffffff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.1, shadowRadius: 10 },
+  modalContent: { backgroundColor: '#ffffff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 0, maxHeight: '80%', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.1, shadowRadius: 10 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1a1c19' },
   modalSearchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f4f4ee', borderRadius: 8, paddingHorizontal: 12, marginBottom: 16, height: 40 },
@@ -115,3 +117,4 @@ const styles = StyleSheet.create({
   modalOptionTextSelected: { color: '#154212', fontWeight: 'bold' },
   emptyOptionsText: { textAlign: 'center', color: '#72796e', marginTop: 20, fontStyle: 'italic' }
 });
+

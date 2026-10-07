@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+﻿import React, { useEffect, useState, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -12,9 +12,10 @@ import {
   TextInput,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../../lib/supabase';
 import { useActiveFinca } from '../../contexts/ActiveFincaContext';
 
@@ -42,21 +43,23 @@ export default function PerfilScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Datos de usuario y sesión
+  // Datos de usuario y sesiÃ³n
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
-  // Datos de finca y membresía
+  // Datos de finca y membresÃ­a
   const [miMembresia, setMiMembresia] = useState<Miembro | null>(null);
   const [finca, setFinca] = useState<Finca | null>(null);
   const [miembros, setMiembros] = useState<Miembro[]>([]);
+  const [invitaciones, setInvitaciones] = useState<any[]>([]);
+  const insets = useSafeAreaInsets();
 
-  // Modales de edición rápida
+  // Modales de ediciÃ³n rÃ¡pida
   const [modalPersonalVisible, setModalPersonalVisible] = useState(false);
   const [modalFincaVisible, setModalFincaVisible] = useState(false);
   const [modalNuevoMiembroVisible, setModalNuevoMiembroVisible] = useState(false);
 
-  // Estados temporales para formularios de edición
+  // Estados temporales para formularios de ediciÃ³n
   const [editNombre, setEditNombre] = useState('');
   const [editTelefono, setEditTelefono] = useState('');
   const [editNacionalidad, setEditNacionalidad] = useState('');
@@ -74,7 +77,8 @@ export default function PerfilScreen() {
   // Cargar todos los datos del perfil
   const cargarDatosPerfil = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) {
         router.replace('/(auth)/login');
         return;
@@ -90,7 +94,7 @@ export default function PerfilScreen() {
         return;
       }
 
-      // 1. Obtener la membresía del usuario actual para la finca activa
+      // 1. Obtener la membresÃ­a del usuario actual para la finca activa
       const { data: membresiaData, error: memError } = await supabase
         .from('miembros_finca')
         .select(`
@@ -147,6 +151,18 @@ export default function PerfilScreen() {
         if (listaMiembros) {
           setMiembros(listaMiembros);
         }
+
+        // 3. Obtener cÃ³digos de invitaciÃ³n pendientes
+        const { data: listaInvitaciones, error: invError } = await supabase
+          .from('codigos_invitacion')
+          .select('*')
+          .eq('finca_id', activeFinca.id)
+          .gt('expira_en', new Date().toISOString())
+          .order('created_at', { ascending: false });
+        
+        if (listaInvitaciones) {
+          setInvitaciones(listaInvitaciones);
+        }
       } else {
         setMiMembresia(null);
         setFinca(null);
@@ -172,7 +188,7 @@ export default function PerfilScreen() {
     cargarDatosPerfil();
   };
 
-  // Abrir modal de edición personal
+  // Abrir modal de ediciÃ³n personal
   const abrirEdicionPersonal = () => {
     setEditNombre(miMembresia?.nombre_completo || '');
     setEditTelefono(miMembresia?.telefono || '');
@@ -203,7 +219,7 @@ export default function PerfilScreen() {
 
       if (error) throw error;
 
-      Alert.alert('¡Actualizado!', 'Tus datos personales han sido guardados.');
+      Alert.alert('Â¡Actualizado!', 'Tus datos personales han sido guardados.');
       setModalPersonalVisible(false);
       cargarDatosPerfil();
     } catch (error: any) {
@@ -214,7 +230,7 @@ export default function PerfilScreen() {
     }
   };
 
-  // Abrir modal de edición de finca
+  // Abrir modal de ediciÃ³n de finca
   const abrirEdicionFinca = () => {
     if (miMembresia?.rol !== 'Admin') {
       Alert.alert('Acceso Restringido', 'Solo los administradores pueden cambiar el nombre de la finca.');
@@ -227,7 +243,7 @@ export default function PerfilScreen() {
   // Guardar cambio de nombre de la finca
   const guardarFinca = async () => {
     if (!editNombreFinca.trim()) {
-      Alert.alert('Campo requerido', 'Por favor ingresa un nombre válido para la finca.');
+      Alert.alert('Campo requerido', 'Por favor ingresa un nombre vÃ¡lido para la finca.');
       return;
     }
 
@@ -242,7 +258,7 @@ export default function PerfilScreen() {
 
       if (error) throw error;
 
-      Alert.alert('¡Finca Actualizada!', 'El nombre de la finca ha sido modificado con éxito.');
+      Alert.alert('Â¡Finca Actualizada!', 'El nombre de la finca ha sido modificado con Ã©xito.');
       setModalFincaVisible(false);
       cargarDatosPerfil();
     } catch (error: any) {
@@ -267,7 +283,7 @@ export default function PerfilScreen() {
         codigo += chars.charAt(Math.floor(Math.random() * chars.length));
       }
       
-      // 2. Set expiration (e.g. 7 días)
+      // 2. Set expiration (e.g. 7 dÃ­as)
       const expiraEn = new Date();
       expiraEn.setDate(expiraEn.getDate() + 7);
 
@@ -284,9 +300,10 @@ export default function PerfilScreen() {
       if (error) throw error;
 
       setCodigoGenerado(codigo);
+      setInvitaciones([{ id: Math.random().toString(), codigo, rol: nuevoRolMiembro, expira_en: expiraEn.toISOString() }, ...invitaciones]);
     } catch (error: any) {
-      console.error('Error generando código:', error);
-      Alert.alert('Error', error.message || 'No se pudo generar el código de invitación.');
+      console.error('Error generando cÃ³digo:', error);
+      Alert.alert('Error', error.message || 'No se pudo generar el cÃ³digo de invitaciÃ³n.');
     } finally {
       setGuardando(false);
     }
@@ -298,7 +315,7 @@ export default function PerfilScreen() {
       if (Platform.OS === 'web') {
         window.alert('No puedes eliminarte a ti mismo de la finca.');
       } else {
-        Alert.alert('Operación no permitida', 'No puedes eliminarte a ti mismo de la finca.');
+        Alert.alert('OperaciÃ³n no permitida', 'No puedes eliminarte a ti mismo de la finca.');
       }
       return;
     }
@@ -328,13 +345,13 @@ export default function PerfilScreen() {
     };
 
     if (Platform.OS === 'web') {
-      if (window.confirm(`¿Estás seguro de que deseas eliminar a "${miembro.nombre_completo}" del equipo de la finca?`)) {
+      if (window.confirm(`Â¿EstÃ¡s seguro de que deseas eliminar a "${miembro.nombre_completo}" del equipo de la finca?`)) {
         doDelete();
       }
     } else {
       Alert.alert(
         'Eliminar Miembro',
-        `¿Estás seguro de que deseas eliminar a "${miembro.nombre_completo}" del equipo de la finca?`,
+        `Â¿EstÃ¡s seguro de que deseas eliminar a "${miembro.nombre_completo}" del equipo de la finca?`,
         [
           { text: 'Cancelar', style: 'cancel' },
           {
@@ -347,34 +364,35 @@ export default function PerfilScreen() {
     }
   };
 
-  // Cerrar Sesión
+  // Cerrar SesiÃ³n
   const handleCerrarSesion = () => {
     const doLogout = () => {
       // Navegamos al login PRIMERO para evitar conflictos con el Layout de (tabs)
       router.replace('/(auth)/login');
       
-      // Y luego de un momento, cerramos la sesión en el servidor
+      // Y luego de un momento, cerramos la sesiÃ³n en el servidor
       setTimeout(async () => {
         try {
+          import('../../lib/database').then(m => m.clearDatabase());
           await supabase.auth.signOut();
         } catch (error) {
-          console.error('Error cerrando sesión:', error);
+          console.error('Error cerrando sesiÃ³n:', error);
         }
       }, 300);
     };
 
     if (Platform.OS === 'web') {
-      if (window.confirm('¿Deseas cerrar tu sesión actual de AgroControl?')) {
+      if (window.confirm('Â¿Deseas cerrar tu sesiÃ³n actual de AgroControl?')) {
         doLogout();
       }
     } else {
       Alert.alert(
-        'Cerrar Sesión',
-        '¿Deseas cerrar tu sesión actual de AgroControl?',
+        'Cerrar SesiÃ³n',
+        'Â¿Deseas cerrar tu sesiÃ³n actual de AgroControl?',
         [
           { text: 'Cancelar', style: 'cancel' },
           {
-            text: 'Cerrar Sesión',
+            text: 'Cerrar SesiÃ³n',
             style: 'destructive',
             onPress: doLogout,
           },
@@ -383,7 +401,7 @@ export default function PerfilScreen() {
     }
   };
 
-  // Función para obtener estilos según el rol
+  // FunciÃ³n para obtener estilos segÃºn el rol
   const getRolBadgeStyle = (rol: string) => {
     switch (rol) {
       case 'Admin':
@@ -430,7 +448,7 @@ export default function PerfilScreen() {
         }
       >
         {/* ========================================================= */}
-        {/* 1. SECCIÓN: MIS DATOS PERSONALES */}
+        {/* 1. SECCIÃ“N: MIS DATOS PERSONALES */}
         {/* ========================================================= */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
@@ -474,7 +492,7 @@ export default function PerfilScreen() {
           {/* Detalles personales */}
           <View style={styles.infoGrid}>
             <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>CORREO ELECTRÓNICO</Text>
+              <Text style={styles.infoLabel}>CORREO ELECTRÃ“NICO</Text>
               <View style={styles.infoValueRow}>
                 <MaterialCommunityIcons name="email-outline" size={16} color="#5b5f5c" />
                 <Text style={styles.infoValueText}>{userEmail}</Text>
@@ -482,7 +500,7 @@ export default function PerfilScreen() {
             </View>
 
             <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>TELÉFONO</Text>
+              <Text style={styles.infoLabel}>TELÃ‰FONO</Text>
               <View style={styles.infoValueRow}>
                 <MaterialIcons name="phone" size={16} color="#5b5f5c" />
                 <Text style={styles.infoValueText}>
@@ -514,7 +532,7 @@ export default function PerfilScreen() {
         </View>
 
         {/* ========================================================= */}
-        {/* 1.5. SECCIÓN: MIS FINCAS (SWITCHER) */}
+        {/* 1.5. SECCIÃ“N: MIS FINCAS (SWITCHER) */}
         {/* ========================================================= */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
@@ -571,7 +589,7 @@ export default function PerfilScreen() {
         </View>
 
         {/* ========================================================= */}
-        {/* 2. SECCIÓN: DATOS DE LA FINCA ACTUAL */}
+        {/* 2. SECCIÃ“N: DATOS DE LA FINCA ACTUAL */}
         {/* ========================================================= */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
@@ -632,7 +650,7 @@ export default function PerfilScreen() {
           ) : (
             <View style={styles.noFincaBox}>
               <MaterialIcons name="error-outline" size={32} color="#ba1a1a" />
-              <Text style={styles.noFincaTitle}>Aún no tienes una finca registrada</Text>
+              <Text style={styles.noFincaTitle}>AÃºn no tienes una finca registrada</Text>
               <Text style={styles.noFincaDesc}>
                 Para registrar animales, pesajes y coordinar tu equipo debes registrar tu primera finca.
               </Text>
@@ -648,7 +666,7 @@ export default function PerfilScreen() {
         </View>
 
         {/* ========================================================= */}
-        {/* 3. SECCIÓN: MIEMBROS DE LA FINCA Y ROLES */}
+        {/* 3. SECCIÃ“N: MIEMBROS DE LA FINCA Y ROLES */}
         {/* ========================================================= */}
         {finca && (
           <View style={styles.card}>
@@ -673,7 +691,7 @@ export default function PerfilScreen() {
             </View>
 
             <Text style={styles.helperTextSection}>
-              Personas con acceso a la gestión de {finca.nombre}.
+              Personas con acceso a la gestiÃ³n de {finca.nombre}.
             </Text>
 
             {miembros.map((m) => {
@@ -693,13 +711,13 @@ export default function PerfilScreen() {
                       <Text style={styles.memberName}>{m.nombre_completo}</Text>
                       {esYo && (
                         <View style={styles.badgeYou}>
-                          <Text style={styles.badgeYouText}>TÚ</Text>
+                          <Text style={styles.badgeYouText}>TÃš</Text>
                         </View>
                       )}
                     </View>
 
                     <Text style={styles.memberMeta}>
-                      {m.telefono ? `📞 ${m.telefono}` : 'Sin teléfono'} • {m.nacionalidad || 'Sin nacionalidad'}
+                      {m.telefono ? `ðŸ“ž ${m.telefono}` : 'Sin telÃ©fono'} â€¢ {m.nacionalidad || 'Sin nacionalidad'}
                     </Text>
                   </View>
 
@@ -722,15 +740,46 @@ export default function PerfilScreen() {
                 </View>
               );
             })}
+
+            {invitaciones.map((inv) => (
+              <View key={inv.id} style={[styles.memberCard, { backgroundColor: '#f9faf8', borderStyle: 'dashed' }]}>
+                <View style={[styles.memberAvatar, { backgroundColor: '#e3e3de' }]}>
+                  <MaterialIcons name="hourglass-empty" size={20} color="#72796e" />
+                </View>
+
+                <View style={styles.memberInfo}>
+                  <Text style={[styles.memberName, { color: '#5b5f5c' }]}>InvitaciÃ³n Pendiente</Text>
+                  <Text style={styles.memberMeta}>Expira: {new Date(inv.expira_en).toLocaleDateString()}</Text>
+                  <Text style={[styles.memberMeta, { fontWeight: 'bold', letterSpacing: 2, marginTop: 2 }]}>{inv.codigo}</Text>
+                </View>
+
+                <View style={{ alignItems: 'center', gap: 6 }}>
+                  <View style={[styles.badgeRolSmall, { backgroundColor: '#f0f0ea', borderColor: '#c2c9bb' }]}>
+                    <Text style={[styles.badgeRolSmallText, { color: '#42493e' }]}>
+                      {inv.rol}
+                    </Text>
+                  </View>
+                  <TouchableOpacity 
+                    onPress={async () => {
+                      await Clipboard.setStringAsync(inv.codigo);
+                      Alert.alert('Copiado', 'El cÃ³digo ha sido copiado al portapapeles.');
+                    }}
+                    style={[styles.btnDeleteMember, { borderColor: '#154212' }]}
+                  >
+                    <MaterialIcons name="content-copy" size={18} color="#154212" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
           </View>
         )}
 
         {/* ========================================================= */}
-        {/* BOTÓN CERRAR SESIÓN */}
+        {/* BOTÃ“N CERRAR SESIÃ“N */}
         {/* ========================================================= */}
         <TouchableOpacity style={styles.btnLogout} onPress={handleCerrarSesion}>
           <MaterialIcons name="logout" size={20} color="#ba1a1a" />
-          <Text style={styles.btnLogoutText}>CERRAR SESIÓN</Text>
+          <Text style={styles.btnLogoutText}>CERRAR SESIÃ“N</Text>
         </TouchableOpacity>
 
         <View style={{ height: 20 }} />
@@ -739,7 +788,7 @@ export default function PerfilScreen() {
       {/* ========================================================= */}
       {/* MODAL: EDITAR DATOS PERSONALES */}
       {/* ========================================================= */}
-      <Modal
+      <Modal statusBarTranslucent
         visible={modalPersonalVisible}
         transparent
         animationType="fade"
@@ -750,7 +799,7 @@ export default function PerfilScreen() {
           activeOpacity={1} 
           onPress={() => setModalPersonalVisible(false)}
         >
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 20) }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Editar Mis Datos</Text>
               <TouchableOpacity onPress={() => setModalPersonalVisible(false)}>
@@ -763,10 +812,10 @@ export default function PerfilScreen() {
               style={styles.modalInput}
               value={editNombre}
               onChangeText={setEditNombre}
-              placeholder="Ej: Juan Pérez"
+              placeholder="Ej: Juan PÃ©rez"
             />
 
-            <Text style={styles.inputLabel}>Teléfono</Text>
+            <Text style={styles.inputLabel}>TelÃ©fono</Text>
             <TextInput
               style={styles.modalInput}
               value={editTelefono}
@@ -810,7 +859,7 @@ export default function PerfilScreen() {
       {/* ========================================================= */}
       {/* MODAL: EDITAR FINCA */}
       {/* ========================================================= */}
-      <Modal
+      <Modal statusBarTranslucent
         visible={modalFincaVisible}
         transparent
         animationType="fade"
@@ -821,7 +870,7 @@ export default function PerfilScreen() {
           activeOpacity={1} 
           onPress={() => setModalFincaVisible(false)}
         >
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 20) }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Editar Nombre de la Finca</Text>
               <TouchableOpacity onPress={() => setModalFincaVisible(false)}>
@@ -834,7 +883,7 @@ export default function PerfilScreen() {
               style={styles.modalInput}
               value={editNombreFinca}
               onChangeText={setEditNombreFinca}
-              placeholder="Ej: Hacienda San José"
+              placeholder="Ej: Hacienda San JosÃ©"
             />
 
             <View style={styles.modalActions}>
@@ -864,7 +913,7 @@ export default function PerfilScreen() {
       {/* ========================================================= */}
       {/* MODAL: AGREGAR NUEVO MIEMBRO AL EQUIPO */}
       {/* ========================================================= */}
-      <Modal
+      <Modal statusBarTranslucent
         visible={modalNuevoMiembroVisible}
         transparent
         animationType="fade"
@@ -881,9 +930,9 @@ export default function PerfilScreen() {
             setCodigoGenerado(null);
           }}
         >
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 20) }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Generar Invitación</Text>
+              <Text style={styles.modalTitle}>Generar InvitaciÃ³n</Text>
               <TouchableOpacity onPress={() => {
                 setModalNuevoMiembroVisible(false);
                 setCodigoGenerado(null);
@@ -895,20 +944,30 @@ export default function PerfilScreen() {
             {codigoGenerado ? (
               <View style={{ alignItems: 'center', paddingVertical: 20 }}>
                 <Text style={{ fontSize: 16, color: '#5b5f5c', textAlign: 'center', marginBottom: 15 }}>
-                  Comparte este código con tu {nuevoRolMiembro === 'Worker' ? 'Trabajador' : 'Observador'}.
+                  Comparte este cÃ³digo con tu {nuevoRolMiembro === 'Worker' ? 'Trabajador' : 'Observador'}.
                 </Text>
-                <View style={{ backgroundColor: '#e8f5e9', padding: 20, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: '#a1d494' }}>
+                <View style={{ backgroundColor: '#e8f5e9', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 0, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: '#a1d494', alignItems: 'center' }}>
                   <Text style={{ fontSize: 32, fontWeight: 'bold', letterSpacing: 8, color: '#154212' }}>
                     {codigoGenerado}
                   </Text>
+                  <TouchableOpacity 
+                    style={{ marginTop: 15, flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#154212' }}
+                    onPress={async () => {
+                      await Clipboard.setStringAsync(codigoGenerado);
+                      Alert.alert('Copiado', 'El cÃ³digo ha sido copiado al portapapeles.');
+                    }}
+                  >
+                    <MaterialIcons name="content-copy" size={16} color="#154212" style={{ marginRight: 6 }} />
+                    <Text style={{ color: '#154212', fontWeight: 'bold' }}>Copiar CÃ³digo</Text>
+                  </TouchableOpacity>
                 </View>
                 <Text style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center' }}>
-                  El código expira en 7 días y es de un solo uso.
+                  El cÃ³digo expira en 7 dÃ­as y es de un solo uso.
                 </Text>
               </View>
             ) : (
               <>
-                <Text style={styles.inputLabel}>¿Qué rol tendrá el nuevo miembro?</Text>
+                <Text style={styles.inputLabel}>Â¿QuÃ© rol tendrÃ¡ el nuevo miembro?</Text>
                 <View style={styles.roleSelectorRow}>
                   {(['Worker', 'Viewer'] as const).map((r) => (
                     <TouchableOpacity
@@ -947,7 +1006,7 @@ export default function PerfilScreen() {
                     {guardando ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={styles.btnModalSaveText}>Generar Código</Text>
+                      <Text style={styles.btnModalSaveText}>Generar CÃ³digo</Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -1086,7 +1145,7 @@ const styles = StyleSheet.create({
   fincaStatLabel: { fontSize: 9, fontWeight: '700', color: '#5b5f5c', marginBottom: 2 },
   fincaStatCode: { fontSize: 12, fontWeight: '600', color: '#1a1c19', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   fincaStatValue: { fontSize: 12, fontWeight: '600', color: '#1a1c19' },
-  noFincaBox: { alignItems: 'center', padding: 20, gap: 8 },
+  noFincaBox: { alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 0, gap: 8 },
   noFincaTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1c19', textAlign: 'center' },
   noFincaDesc: { fontSize: 13, color: '#5b5f5c', textAlign: 'center', lineHeight: 18 },
   btnCrearFincaGrande: {
@@ -1142,7 +1201,7 @@ const styles = StyleSheet.create({
   badgeRolSmallText: { fontSize: 9, fontWeight: 'bold' },
   btnDeleteMember: { padding: 4 },
 
-  // Botón Cerrar Sesión
+  // BotÃ³n Cerrar SesiÃ³n
   btnLogout: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1167,7 +1226,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 20,
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 0,
     maxHeight: '85%',
   },
   modalHeader: {
@@ -1238,3 +1297,6 @@ const styles = StyleSheet.create({
   },
   btnModalSaveText: { color: '#ffffff', fontSize: 14, fontWeight: 'bold' },
 });
+
+
+

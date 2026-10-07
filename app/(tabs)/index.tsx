@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
+import { getDb } from '../../lib/database';
 import Header from '../../components/Header';
 import { useActiveFinca } from '../../contexts/ActiveFincaContext';
 import AnimalForm from '../../components/forms/AnimalForm';

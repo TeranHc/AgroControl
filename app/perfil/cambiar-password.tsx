@@ -32,7 +32,8 @@ export default function CambiarPasswordScreen() {
 
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user || !user.email) throw new Error('No hay sesión activa.');
 
       // 1. Verificar la contraseña actual intentando iniciar sesión
@@ -55,6 +56,7 @@ export default function CambiarPasswordScreen() {
       const doSignOut = async () => {
         router.replace('/(auth)/login');
         setTimeout(async () => {
+          import('../../lib/database').then(m => m.clearDatabase());
           await supabase.auth.signOut();
         }, 300);
       };

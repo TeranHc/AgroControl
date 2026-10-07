@@ -46,8 +46,6 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#ffffff',
           borderTopColor: '#e3e3de',
-          paddingBottom: Math.max(insets.bottom, 5),
-          height: 60 + Math.max(insets.bottom, 0),
         },
       }}
     >

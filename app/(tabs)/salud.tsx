@@ -16,6 +16,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/Header';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
+import { getDb } from '../../lib/database';
+import { syncFincaData } from '../../lib/sync';
 import { useActiveFinca } from '../../contexts/ActiveFincaContext';
 import SaludForm from '../../components/forms/SaludForm';
 import CustomAlert from '../../components/CustomAlert';
@@ -72,15 +74,18 @@ export default function SaludScreen() {
   const handleDelete = async (id: string) => {
     setAlertConfig(prev => ({ ...prev, visible: false }));
     try {
-      const { error } = await supabase.from('registros_salud').delete().eq('id', id);
-      if (error) throw error;
-      showAlert('¡Éxito!', 'Registro eliminado correctamente.', 'success', () => {
+      if (!activeFinca) return;
+      const db = await getDb();
+      const now = new Date().toISOString();
+      await db.runAsync(`UPDATE registros_salud SET deleted_at = ?, sync_status = 'updated' WHERE id = ?`, [now, id]);
+      showAlert('¡Éxito!', 'Registro eliminado localmente.', 'success', () => {
         setAlertConfig(prev => ({ ...prev, visible: false }));
         fetchRegistros();
+        syncFincaData(activeFinca.id).catch(console.error);
       });
     } catch (error: any) {
       console.error(error);
-      showAlert('Error', 'No se pudo eliminar el registro.', 'error', () => setAlertConfig(prev => ({ ...prev, visible: false })));
+      showAlert('Error', 'No se pudo eliminar.', 'error', () => setAlertConfig(prev => ({ ...prev, visible: false })));
     }
   };
 
@@ -89,31 +94,29 @@ export default function SaludScreen() {
   const fetchRegistros = async () => {
     try {
       if (!activeFinca) return;
-
-      const { data, error } = await supabase
-        .from('registros_salud')
-        .select(`
-          id,
-          animal_id,
-          tipo_evento,
-          nombre_medicamento,
-          dosis,
-          fecha_aplicacion,
-          proxima_dosis,
-          veterinario_encargado,
-          costo,
-          notas,
-          animales!inner ( nombre, codigo_animal, finca_id, especie, fotografia_url )
-        `)
-        .eq('animales.finca_id', activeFinca.id)
-        .order('fecha_aplicacion', { ascending: false });
-
-      if (error) throw error;
-
+      const db = await getDb();
+      const data = await db.getAllAsync(
+        `SELECT 
+          s.id, s.animal_id, s.tipo_evento, s.nombre_medicamento, s.dosis, s.fecha_aplicacion, s.proxima_dosis, s.veterinario_encargado, s.costo, s.notas,
+          a.nombre as animal_nombre, a.codigo_animal, a.finca_id, a.especie, a.fotografia_url
+         FROM registros_salud s
+         INNER JOIN animales a ON s.animal_id = a.id
+         WHERE s.finca_id = ? AND s.deleted_at IS NULL AND a.deleted_at IS NULL
+         ORDER BY s.fecha_aplicacion DESC`,
+        [activeFinca.id]
+      );
       if (data) {
-        // @ts-ignore
-        const records: RegistroSalud[] = data;
-        setRegistros(records);
+        const registros = data.map((r: any) => ({
+          ...r,
+          animales: {
+            nombre: r.animal_nombre,
+            codigo_animal: r.codigo_animal,
+            finca_id: r.finca_id,
+            especie: r.especie,
+            fotografia_url: r.fotografia_url
+          }
+        }));
+        setRegistros(registros as RegistroSalud[]);
       }
     } catch (error) {
       console.error('Error obteniendo registros de salud:', error);
@@ -360,7 +363,7 @@ export default function SaludScreen() {
         />
       )}
 
-      <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
+      <Modal statusBarTranslucent visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <SaludForm 
           onClose={() => setModalVisible(false)} 
           onSuccess={() => { setModalVisible(false); fetchRegistros(); }}

@@ -16,6 +16,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import Header from '../../components/Header';
 import { supabase } from '../../lib/supabase';
+import { getDb } from '../../lib/database';
+import { syncFincaData } from '../../lib/sync';
 import { useActiveFinca } from '../../contexts/ActiveFincaContext';
 import ReproduccionForm from '../../components/forms/ReproduccionForm';
 import CustomAlert from '../../components/CustomAlert';
@@ -72,15 +74,18 @@ export default function ReproduccionScreen() {
   const handleDelete = async (id: string) => {
     setAlertConfig(prev => ({ ...prev, visible: false }));
     try {
-      const { error } = await supabase.from('reproduccion').delete().eq('id', id);
-      if (error) throw error;
-      showAlert('¡Éxito!', 'Evento eliminado correctamente.', 'success', () => {
+      if (!activeFinca) return;
+      const db = await getDb();
+      const now = new Date().toISOString();
+      await db.runAsync(`UPDATE reproduccion SET deleted_at = ?, sync_status = 'updated' WHERE id = ?`, [now, id]);
+      showAlert('¡Éxito!', 'Registro eliminado localmente.', 'success', () => {
         setAlertConfig(prev => ({ ...prev, visible: false }));
         fetchReproduccion();
+        syncFincaData(activeFinca.id).catch(console.error);
       });
     } catch (error: any) {
       console.error(error);
-      showAlert('Error', 'No se pudo eliminar el evento.', 'error', () => setAlertConfig(prev => ({ ...prev, visible: false })));
+      showAlert('Error', 'No se pudo eliminar.', 'error', () => setAlertConfig(prev => ({ ...prev, visible: false })));
     }
   };
 
@@ -89,32 +94,32 @@ export default function ReproduccionScreen() {
   const fetchReproduccion = async () => {
     try {
       if (!activeFinca) return;
-
-      // Hacemos JOIN con la tabla animales dos veces (para hembra y macho)
-      const { data, error } = await supabase
-        .from('reproduccion')
-        .select(`
-          id,
-          animal_id,
-          macho_id,
-          tipo_evento,
-          fecha_evento,
-          estado_gestacion,
-          fecha_probable_parto,
-          crias_nacidas,
-          notas,
-          hembra:animales!animal_id!inner ( nombre, codigo_animal, finca_id, especie, fotografia_url ),
-          macho:animales!macho_id ( codigo_animal )
-        `)
-        .eq('hembra.finca_id', activeFinca.id)
-        .order('fecha_evento', { ascending: false });
-
-      if (error) throw error;
-
+      const db = await getDb();
+      const data = await db.getAllAsync(
+        `SELECT 
+          r.id, r.animal_id, r.macho_id, r.tipo_evento, r.fecha_evento, r.estado_gestacion, r.fecha_probable_parto, r.crias_nacidas, r.notas,
+          a.nombre as hembra_nombre, a.codigo_animal as hembra_codigo, a.finca_id, a.especie, a.fotografia_url,
+          m.codigo_animal as macho_codigo
+         FROM reproduccion r
+         INNER JOIN animales a ON r.animal_id = a.id
+         LEFT JOIN animales m ON r.macho_id = m.id
+         WHERE r.finca_id = ? AND r.deleted_at IS NULL AND a.deleted_at IS NULL
+         ORDER BY r.fecha_evento DESC`,
+        [activeFinca.id]
+      );
       if (data) {
-        // @ts-ignore
-        const records: ReproduccionItem[] = data;
-        setRegistros(records);
+        const registros = data.map((r: any) => ({
+          ...r,
+          hembra: {
+            nombre: r.hembra_nombre,
+            codigo_animal: r.hembra_codigo,
+            finca_id: r.finca_id,
+            especie: r.especie,
+            fotografia_url: r.fotografia_url
+          },
+          macho: r.macho_id ? { codigo_animal: r.macho_codigo } : null
+        }));
+        setRegistros(registros as ReproduccionItem[]);
       }
     } catch (error) {
       console.error('Error obteniendo registros de reproducción:', error);
@@ -398,7 +403,7 @@ export default function ReproduccionScreen() {
         />
       )}
 
-      <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
+      <Modal statusBarTranslucent visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <ReproduccionForm 
           onClose={() => setModalVisible(false)} 
           onSuccess={() => { setModalVisible(false); fetchReproduccion(); }}
